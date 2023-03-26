@@ -1,12 +1,7 @@
-[submodule "src/submodules/godot-headers"]
-	path = src/submodules/godot-headers
-	url = https://github.com/godotengine/godot-headers
-[submodule "src/submodules/GodotZigBindings"]
-	path = src/submodules/GodotZigBindings
-	url = https://github.com/beyondoblivion/GodotZigBindings
-[submodule "src/sokol"]
-	path = src/sokol
-	url = https://github.com/floooh/sokol
 [submodule "src/cimgui"]
 	path = src/cimgui
 	url = https://github.com/cimgui/cimgui
+	
+[submodule "src/sokol-zig"]
+	path = src/sokol-zig
+	url = https://github.com/floooh/sokol-zig

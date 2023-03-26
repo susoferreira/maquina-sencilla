@@ -49,7 +49,7 @@ pub const instruction = struct {
 //freeing is on the caller
 fn toUpper(str: [:0]const u8,allocator : std.mem.Allocator)[]u8{
     var lowered : []u8 = allocator.alloc(u8,str.len) catch unreachable;
-    for(str)|char,index|{
+    for(str,0..)|char,index|{
         lowered[index] = std.ascii.toUpper(char);
     }
     return lowered;
@@ -87,7 +87,7 @@ pub const assembler = struct{
         //they are aligned with MS_OPCODE values 
         var opcodes=[_][:0]const u8{"ADD","CMP","MOV","BEQ"};
 
-        for(opcodes) |opcode,index|{
+        for(opcodes,0..) |opcode,index|{
             if(std.mem.eql(u8,str,opcode)){
                 return @truncate(u2,index);
             }
@@ -224,18 +224,6 @@ pub const assembler = struct{
 
         try self.assemble_all_labels(&lines);
 
-            //var lbl = self.assemble_label(line,index) catch |err| switch(err){
-            //    error.InvalidCharacter  =>{;},
-            //    error.Overflow          =>{
-            //    error.NotEnoughOperands =>{;},
-            //    error.TooManyWords      =>{;},
-            //    error.invalidOperation  =>{;},
-            //    error.LabelDoesNotExist =>{}); return err;}
-            //};
-            //
-
-
-
         index=0;//reusing the same variable because you have to be the change you want to see in the world
         // #recycling #green
         lines.reset();
@@ -270,9 +258,7 @@ pub const assembler = struct{
 
     //builds program from assembled instructions + indices 
     pub fn build(self:*assembler)[]u16{
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        const allocator = gpa.allocator();
-        var program = allocator.alloc(u16,self.instructions.items.len) catch unreachable;
+        var program = self.arena.allocator().alloc(u16,self.instructions.items.len) catch unreachable;
 
         // we assume only one instruction points to each index,
         // if this is not true something has gone very wrong
@@ -299,7 +285,7 @@ test "test assembler"{
     _= try ensamblacion.assemble_program();
     
     const expected = [_]u16{0x8820,0x1840,0x6860,0xc070};
-    for(ensamblacion.build())|line,index|{
+    for(ensamblacion.build(),0..)|line,index|{
         try expect(line==expected[index]);
     }
     ensamblacion.deinit();

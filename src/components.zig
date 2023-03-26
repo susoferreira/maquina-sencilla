@@ -546,9 +546,9 @@ pub const Maquina = struct{
 
     control_unit :UC,
 
-    allocator : std.mem.Allocator,
+    allocator : *std.mem.Allocator,
 
-    pub fn init(allocator : std.mem.Allocator)*Maquina{
+    pub export fn init(allocator : *std.mem.Allocator)*Maquina{
         var self:*Maquina = allocator.create(Maquina) catch unreachable;
 
         self.* = Maquina{
@@ -650,8 +650,9 @@ pub const Maquina = struct{
         if(mem.len > self.system_memory.memory.len){
             logger.warn("El programa es más grande que la memoria, no se cargará completo{s}",.{"\n"});
         }
-
-        for(mem) |item,index| {
+        
+        //safer than std.mem.copy
+        for(mem,0..) |item,index| {
             self.system_memory.memory[index] = item;
         }
     }
@@ -684,7 +685,7 @@ pub const Maquina = struct{
 
 test "Test ejecutar instrucciones"{
 
-    var maquina = Maquina.init(std.heap.page_allocator);
+    var maquina = Maquina.init(&std.heap.page_allocator);
 
     //loading program
     //mov 1 2, moves 0xcaca to position 3
