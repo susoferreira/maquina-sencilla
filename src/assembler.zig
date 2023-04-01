@@ -5,7 +5,8 @@ const logger = std.log.scoped(.assembler);
 
 fn is_number(str: []const u8)bool{
     var nums="0123456789";
-    
+    if (str.len < 1) return false;
+
     for(nums) |num|{
         if (num==str[0]){
             return true;
@@ -47,7 +48,7 @@ pub const instruction = struct {
 
 
 //freeing is on the caller
-fn toUpper(str: [:0]const u8,allocator : std.mem.Allocator)[]u8{
+pub fn toUpper(str: [:0]const u8,allocator : std.mem.Allocator)[]u8{
     var lowered : []u8 = allocator.alloc(u8,str.len) catch unreachable;
     for(str,0..)|char,index|{
         lowered[index] = std.ascii.toUpper(char);
@@ -64,23 +65,20 @@ pub const assembler = struct{
     arena : *std.heap.ArenaAllocator,
     instructions : std.ArrayList(instruction),
     labels : std.StringHashMap(instruction),
+
     
     //arena must be initialized 
     pub fn init(program : [:0]const u8, arena: *std.heap.ArenaAllocator)assembler{
 
         return .{
-            .program = toUpper(program,arena.child_allocator),
+            .program = toUpper(program,arena.allocator()),
             .arena = arena,
-            .labels = std.StringHashMap(instruction).init(std.heap.page_allocator),
-            .instructions = std.ArrayList(instruction).init(std.heap.page_allocator),
+            .labels = std.StringHashMap(instruction).init(arena.allocator()),
+            .instructions = std.ArrayList(instruction).init(arena.allocator()),
         };
     }
 
-    pub fn deinit(self:*assembler)void{
-        self.arena.deinit();
-        self.labels.deinit();
-        self.instructions.deinit();
-    }
+
 
     //matches an instruction to its value
     fn match_opcode(str:[]const u8)!u2{
@@ -132,7 +130,7 @@ pub const assembler = struct{
     // does not assemble labels on its own, you should call assemble_program 
     pub fn assemble_line(self:*assembler,line:[]const u8)!u16 {
 
-        const trimmed = std.mem.trim(u8,line," ");
+        const trimmed = std.mem.trim(u8,line," \n\t");
         var words = std.mem.split(u8,trimmed," ");
         const first = words.first();
 
@@ -158,7 +156,7 @@ pub const assembler = struct{
     fn assemble_all_labels(self:*assembler,lines: *std.mem.SplitIterator(u8))!void{
 
 
-        var indexes = std.AutoHashMap(u7,instruction).init(std.heap.page_allocator); // array to find labels faster
+        var indexes = std.AutoHashMap(u7,instruction).init(self.arena.allocator()); // array to find labels faster
         defer indexes.deinit();
 
         var index:u7=0;
@@ -167,6 +165,7 @@ pub const assembler = struct{
             if(!is_label(line)){
                 continue;
             }
+
             var trimmed = std.mem.trim(u8,line," ");
             var words = std.mem.split(u8,trimmed," ");
             var first =words.first();
@@ -228,7 +227,10 @@ pub const assembler = struct{
         // #recycling #green
         lines.reset();
         while(lines.next()) |line| : (index+=1){
-
+            if(std.mem.trim(u8,line," \t").len==0){
+                index-=1;
+                continue;
+            }
             if(is_label(line))
                 continue;
             var operation =  self.assemble_line(line) catch |err| switch(err){
@@ -288,7 +290,7 @@ test "test assembler"{
     for(ensamblacion.build(),0..)|line,index|{
         try expect(line==expected[index]);
     }
-    ensamblacion.deinit();
+    arena.deinit();
 }
 
 test "test labels"{
@@ -305,7 +307,7 @@ test "test labels"{
     try expect(ens.labels.get("COSA").?.data orelse 0x0000==0xcaca);
     try expect(ens.labels.get("COSA1").?.data orelse 0x0000 == ens.assemble_line("MOV 0 1") catch unreachable);
 
-    ens.deinit();
+    arena.deinit();
 
 
     const test_resolving =

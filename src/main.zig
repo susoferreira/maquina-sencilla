@@ -1,16 +1,348 @@
 const std = @import("std");
-const init_gui = @import("gui.zig").init_gui;
+const c = @import("c/c.zig");
+const assembler = @import("assembler.zig").assembler;
+const instruction = @import("assembler.zig").instruction;
+const MS = @import("components.zig").Maquina;
+const logger = std.log.scoped(.ui);
+const decode_instruction =@import("components.zig").decode_instruction;
+const MS_OPCODE= @import("components.zig").MS_OPCODE;
+const UC_STATES = @import("components.zig").UC.UC_STATES;
+const ALU_OPCODE =@import("components.zig").ALU_OPCODE;
 
-pub fn log(
-    comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    std.debug.print(" |LOG| ["++@tagName(message_level)++" | " ++ @tagName(scope) ++ "]:   " ++ format,args);
+
+const State = struct {
+    pass_action: c.sg_pass_action,
+    main_pipeline: c.sg_pipeline,
+    main_bindings: c.sg_bindings,
+};
+
+
+const maquina_data= struct{
+    pc:*u7,
+    fz:*bool,
+    RAM_OUT:*u16,
+    Operand_A:*u7,
+    Operand_B:*u7,
+
+};
+
+var state: State = undefined;
+var last_time: u64 = 0;
+var show_test_window: bool = false;
+var show_another_window: bool = false;
+var display_menu: bool = false;
+var f: f32 = 0.0;
+var clear_color: [3]f32 = .{ 0.2, 0.2, 0.2 };
+
+
+var arena =std.heap.ArenaAllocator.init(std.heap.page_allocator);
+var ass:assembler=assembler.init("",&arena);
+var alloc =std.heap.page_allocator;
+var maquina:*MS = undefined;
+var maquina_data_inspector :maquina_data =undefined;
+
+pub fn assemble_program(program:[:0]const u8)bool{
+    ass = assembler.init(program,&arena);
+    _=ass.assemble_program() catch return false;
+    return true;
+
 }
 
 
-pub fn main() !void {
-    try init_gui();
+pub fn inspector_for_u16(name:[]const u8,memory:*u16)void{
+    c.igTableNextRow(0,0);
+    //add sentinel because C
+    var sentinel_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{name[0..name.len]},0) catch unreachable;
+    defer alloc.free(sentinel_name);
+
+    //##name uses name as id
+    var label = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{"##",sentinel_name},0) catch unreachable;
+    defer alloc.free(label);
+    _ = c.igTableNextColumn();
+    c.igText(sentinel_name);
+    _ = c.igTableNextColumn();
+    _ = c.igInputScalar(label,c.ImGuiDataType_U16,memory,null,null,"%04X",0);
+
+}
+
+
+
+pub fn inspector_for_u7(name:[]const u8,memory:*u7)void{
+    c.igTableNextRow(0,0);
+    //add sentinel because C
+    var sentinel_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{name[0..name.len]},0) catch unreachable;
+    defer alloc.free(sentinel_name);
+
+    //##name uses name as id
+    var label = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{"##",sentinel_name},0) catch unreachable;
+    defer alloc.free(label);
+    _ = c.igTableNextColumn();
+    c.igText(sentinel_name);
+    _ = c.igTableNextColumn();
+    _ = c.igInputScalar(label,c.ImGuiDataType_U8,memory,null,null,"%02X",0);
+
+}
+
+pub fn inspector_for_bool(name:[]const u8,memory:*bool)void{
+    c.igTableNextRow(0,0);
+    //add sentinel because C
+    var sentinel_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{name[0..name.len]},0) catch unreachable;
+    defer alloc.free(sentinel_name);
+    //##name uses name as id
+    var label = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{"##",sentinel_name},0) catch unreachable;
+    defer alloc.free(label);
+    _ = c.igTableNextColumn();
+    c.igText(sentinel_name);
+    _ = c.igTableNextColumn();
+    _ = c.igCheckbox(label,memory);
+
+}
+
+pub fn inspector_for_enum(name:[]const u8,comptime T:type,memory:*T,)void{
+
+
+    if(@typeInfo(T) != .Enum){
+        @compileError("inspector_for_enum solo puede recibir T = enum y memory = *enum");
+    }
+    
+    var sentinel_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{name[0..name.len]},0) catch unreachable;
+    defer alloc.free(sentinel_name);
+
+    //##name uses name as id
+    var label = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{"##",sentinel_name},0) catch unreachable;
+    defer alloc.free(label);
+
+
+    _ = c.igTableNextColumn();
+    c.igText(sentinel_name);
+    _ = c.igTableNextColumn();
+    if(c.igBeginCombo(label,@tagName(memory.*),0)){
+        logger.debug("Tipo de T: {s}\n",.{@typeName(T)});
+        inline for(@typeInfo(T).Enum.fields)|field|{
+            var field_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{field.name}, 0) catch unreachable;
+            var selected = @enumToInt(memory.*) == field.value;
+            if(c.igSelectable_Bool(field_name,selected,0,c.ImVec2{.x=200,.y=0})){
+                memory.* = @intToEnum(T,field.value);
+            }
+            if(selected){
+                c.igSetItemDefaultFocus();
+            }
+
+         }
+        c.igEndCombo();
+     }
+
+
+
+
+}
+
+
+pub fn inspector_labels()void{
+    _ = c.igBegin("Inspector del programa",0,0);
+    if (c.igBeginTable("labels_inspector",2, 0,c.ImVec2{.x=200,.y=200},0)) //0 means no flags
+    {
+        
+        // Submit columns name with TableSetupColumn() and call TableHeadersRow() to create a row with a header in each column.
+        // (Later we will show how TableSetupColumn() has other uses, optional flags, sizing weight etc.)
+        c.igTableSetupColumn("Etiqueta",0,0,0);
+        c.igTableSetupColumn("Valor (hex)",0,0,0);
+        c.igTableHeadersRow();
+
+        for(ass.instructions.items) |label|
+        {
+            var name = label.name orelse continue;
+
+            inspector_for_u16(name,&maquina.system_memory.memory[label.index]);
+        }
+        c.igEndTable();
+    }
+    c.igEnd();
+}
+
+
+
+pub fn struct_inspector(comptime T :type, instance:T)void{
+    if (c.igBeginTable("maquina_inspector",2, 0,c.ImVec2{.x=200,.y=200},0)) //0 means no flags
+    {
+        
+        // Submit columns name with TableSetupColumn() and call TableHeadersRow() to create a row with a header in each column.
+        // (Later we will show how TableSetupColumn() has other uses, optional flags, sizing weight etc.)
+        c.igTableSetupColumn("Variable",0,0,0);
+        c.igTableSetupColumn("Valor",0,0,0);
+        c.igTableHeadersRow();
+
+        inline for(@typeInfo(T).Struct.fields) |field|
+        {
+            switch(@typeInfo(field.type)){
+
+                .Pointer =>{
+                    switch(field.type){
+
+                        *u16 =>{inspector_for_u16(field.name,@field(instance, field.name)); },
+                        *u7 =>{inspector_for_u7(field.name,@field(instance, field.name)); },
+                        *bool =>{inspector_for_bool(field.name,@field(instance,field.name));},
+                        else =>{
+                            switch (@typeInfo(@typeInfo(field.type).Pointer.child)){
+                                .Enum =>{inspector_for_enum(
+                                    field.name,
+                                    @typeInfo(field.type).Pointer.child,
+                                    @field(instance,field.name),
+                                );},
+
+
+
+                                else =>{logger.debug("Tipo no soportado: {s} es de tipo {s}",.{field.name,@typeName(field.type)});}
+                            }
+                            
+                        },
+                    }
+                },
+                else => {logger.debug("fields of struct_inspector should be all pointers but field {s} is a {s}",.{field.name,@typeName(field.type)});}
+            }
+
+
+            
+        }
+        c.igEndTable();
+    }
+}
+
+
+
+pub fn inspector_maquina()void{
+
+    _ = c.igBegin("Inspector de la maquina",0,0);
+    var inspector_data =.{
+        .UC_Internal_State=&maquina.control_unit.state,
+        .pc = maquina.program_counter.stored_pc,
+        .fz = &maquina.uc_in_flag_zero,
+        .RAM_OUT = maquina.system_memory.out_data,
+        .RI_enable_read = &maquina.ri_enable_read,
+        .Operand_A=maquina.instruction_register.dir1,
+        .Operand_B=maquina.instruction_register.dir2,
+        .RI_instruction_OPCODE=maquina.instruction_register.op,
+        .ALU_Enable_A=&maquina.alu_in_enableA,
+        .ALU_Enable_B=&maquina.alu_in_enableB,
+        .UC_ALU_OPCODE=maquina.control_unit.alu_out,
+
+    };
+    struct_inspector(@TypeOf(inspector_data),inspector_data);
+
+
+    c.igEnd();
+}
+
+
+pub fn load_memory()void{
+    maquina.load_memory(ass.build());
+}
+
+
+export fn init() void {
+    c.setupAssemblyEditor();
+    maquina=MS.init(&alloc);
+
+
+    var desc = std.mem.zeroes(c.sg_desc);
+    desc.context = c.sapp_sgcontext();
+    c.sg_setup(&desc);
+    c.stm_setup();
+    var imgui_desc = std.mem.zeroes(c.simgui_desc_t);
+    c.simgui_setup(&imgui_desc);
+
+    state.pass_action.colors[0].action = c.SG_ACTION_CLEAR;
+    state.pass_action.colors[0].value = c.sg_color{ .r = clear_color[0], .g = clear_color[1], .b = clear_color[2], .a = 1.0 };
+}
+
+export fn update() void {
+
+    const width = c.sapp_width();
+    const height = c.sapp_height();
+    const dt = c.stm_sec(c.stm_laptime(&last_time));
+    const dpi_scale =c.sapp_dpi_scale();
+    c.simgui_new_frame(&c.simgui_frame_desc_t{
+        .width = width,
+        .height = height,
+        .delta_time = dt,
+        .dpi_scale =  dpi_scale,
+    });
+
+    _=c.igBegin("Ensamblador",0,c.ImGuiWindowFlags_NoScrollbar);
+    c.igSetWindowSize_Vec2(c.ImVec2{.x=450,.y= 800}, c.ImGuiCond_FirstUseEver);
+    if (c.igButton("Ensamblar",c.ImVec2{.x=0,.y=0}))
+    {
+        var text =c.getAssemblyEditorText();
+        var len = std.mem.len(text);
+        if(len > 1 and assemble_program(text[0..len:0]))
+            load_memory();
+    }
+    c.igSameLine(0,20);
+
+    if (c.igButton("Avanzar un ciclo de reloj",c.ImVec2{.x=0,.y=0}))
+    {
+        maquina.update() catch unreachable;
+    }
+
+    if(c.igButton("Avanzar una instrucción",c.ImVec2{.x=0,.y=0})){
+        maquina.update() catch unreachable;
+        while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
+            maquina.update() catch unreachable;
+        }
+    }
+    c.igSameLine(0,20);
+
+    if (c.igButton("Resetear maquina",c.ImVec2{.x=0,.y=0}))
+    {
+        alloc.destroy(maquina);
+        maquina=MS.init(&alloc);
+    }
+
+    inspector_labels();
+    inspector_maquina();
+    c.drawAssemblyEditor();
+    c.igEnd();
+
+    c.draw_hex_editor(&maquina.system_memory.memory,maquina.system_memory.memory.len);
+
+
+    
+
+
+
+
+
+
+    
+
+
+    //render stuff
+    c.sg_begin_default_pass(&state.pass_action, width, height);
+    c.simgui_render();
+    c.sg_end_pass();
+    c.sg_commit();
+}
+
+export fn cleanup() void {
+    c.simgui_shutdown();
+    c.sg_shutdown();
+
+}
+
+export fn event(e: [*c]const c.sapp_event) void {
+    _ = c.simgui_handle_event(e);
+}
+
+pub fn main() void {
+    var app_desc = std.mem.zeroes(c.sapp_desc);
+    app_desc.width = 1280;
+    app_desc.height = 720;
+    app_desc.init_cb = init;
+    app_desc.frame_cb = update;
+    app_desc.cleanup_cb = cleanup;
+    app_desc.event_cb = event;
+    app_desc.enable_clipboard = true;
+    app_desc.window_title = "IMGUI (sokol-zig)";
+    app_desc.high_dpi=true;
+    _ = c.sapp_run(&app_desc);
 }

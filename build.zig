@@ -2,8 +2,24 @@ const std = @import("std");
 const CrossTarget = @import("std").zig.CrossTarget;
 const Mode = std.builtin.Mode;
 const LibExeObjStep = std.build.LibExeObjStep;
-const sokol = @import("src/sokol-zig/build.zig");
 
+
+pub const Config = struct {
+    backend: Backend = .auto,
+    force_egl: bool = false,
+
+    enable_x11: bool = true,
+    enable_wayland: bool = false
+};
+pub const Backend = enum {
+    auto,   // Windows: D3D11, macOS/iOS: Metal, otherwise: GL
+    d3d11,
+    metal,
+    gl,
+    gles2,
+    gles3,
+    wgpu,
+};
 
 pub fn build(b: *std.build.Builder) !void {
     // Standard target options allows the person running `zig build` to choose
@@ -16,8 +32,7 @@ pub fn build(b: *std.build.Builder) !void {
     // Standard optimize options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const optimize = b.standardOptimizeOption(.{});
-    const force_gl = b.option(bool, "gl", "Force GL backend") orelse false;
-    _ = force_gl;
+    var config:Config = .{};
 
     const exe = b.addExecutable(.{
         .name = "Maquina sencilla",
@@ -25,56 +40,97 @@ pub fn build(b: *std.build.Builder) !void {
         .target = target,
         .optimize = optimize,
     });
-    exe.install();
     exe.linkLibC();
+    exe.linkLibCpp();//imgui needs libcpp
+    exe.addIncludePath("src/");
 
+
+
+    //cimgui
+    exe.addCSourceFile("src/c/compilation.c",&[_][]u8{""});
+    const cpp_args = [_][]const u8{ "-Wno-deprecated-declarations", "-Wno-return-type-c-linkage", "-fno-exceptions", "-fno-threadsafe-statics" };
+    exe.addCSourceFile("src/cimgui/imgui/imgui.cpp", &cpp_args);
+    // Need to add this after updating imgui to 1.80+
+    exe.addCSourceFile("src/cimgui/imgui/imgui_tables.cpp", &cpp_args);
+    exe.addCSourceFile("src/cimgui/imgui/imgui_demo.cpp", &cpp_args);
+    exe.addCSourceFile("src/cimgui/imgui/imgui_draw.cpp", &cpp_args);
+    exe.addCSourceFile("src/cimgui/imgui/imgui_widgets.cpp", &cpp_args);
+    exe.addCSourceFile("src/cimgui/cimgui.cpp", &cpp_args);
+
+    //hex editor (from imgui-club on github)
+    exe.addCSourceFile("src/hex_editor/hex_editor_wrappers.cpp",&cpp_args);
+
+    //ImGuiColorTextEdit (also from github)
+    exe.addCSourceFile("src/ColorTextEdit/TextEditor.cpp",&cpp_args);
+    exe.addCSourceFile("src/ColorTextEdit/TextEditorWrappers.cpp",&cpp_args);
+
+
+    var _backend = config.backend;
+    if (_backend == .auto) {
+        if (exe.target.isDarwin()) { _backend = .metal; }
+        else if (exe.target.isWindows()) { _backend = .d3d11; }
+        else { _backend = .gl; }
+    }
+
+     if (target.isDarwin()) {
+        exe.linkFramework("Cocoa");
+        exe.linkFramework("QuartzCore");
+        exe.linkFramework("AudioToolbox");
+        if (.metal == _backend) {
+            exe.linkFramework("MetalKit");
+            exe.linkFramework("Metal");
+        }
+        else {
+            exe.linkFramework("OpenGL");
+        }
+    } else {
+        if (exe.target.isLinux()) {
+            var link_egl = config.force_egl or config.enable_wayland;
+            var egl_ensured = (config.force_egl and config.enable_x11) or config.enable_wayland;
+
+            exe.linkSystemLibrary("asound");
+
+            if (.gles2 == _backend) {
+                exe.linkSystemLibrary("glesv2");
+                if (!egl_ensured) {
+                    @panic("GLES2 in Linux only available with Config.force_egl and/or Wayland");
+                }
+            } else {
+                exe.linkSystemLibrary("GL");
+            }
+            if (config.enable_x11) {
+                exe.linkSystemLibrary("X11");
+                exe.linkSystemLibrary("Xi");
+                exe.linkSystemLibrary("Xcursor");
+            }
+            if (config.enable_wayland) {
+                exe.linkSystemLibrary("wayland-client");
+                exe.linkSystemLibrary("wayland-cursor");
+                exe.linkSystemLibrary("wayland-egl");
+                exe.linkSystemLibrary("xkbcommon");
+            }
+            if (link_egl) {
+                exe.linkSystemLibrary("egl");
+            }
+        }
+        else if (exe.target.isWindows()) {
+            exe.linkSystemLibraryName("kernel32");
+            exe.linkSystemLibraryName("user32");
+            exe.linkSystemLibraryName("gdi32");
+            exe.linkSystemLibraryName("ole32");
+            if (.d3d11 == _backend) {
+                exe.linkSystemLibraryName("d3d11");
+                exe.linkSystemLibraryName("dxgi");
+            }
+        }
+    }
+
+
+    exe.install();
     const run_cmd = exe.run();
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-
-    //sokol
-
-    exe.addCSourceFile("../src/c/sokol_lib.c", &[_][]const u8{""}); // this contains the implementation for sokol, imported from the .h files
-
-
-    if (target.isWindows()) {
-        //See https://github.com/ziglang/zig/issues/8531 only matters in release mode
-        exe.want_lto = false;
-            exe.linkSystemLibrary("user32");
-            exe.linkSystemLibrary("gdi32");
-            exe.linkSystemLibrary("ole32"); // For Sokol audio
-    } else if (target.isDarwin()) {
-        const frameworks_dir = try macos_frameworks_dir(b);
-        exe.addFrameworkDir(frameworks_dir);
-        exe.linkFramework("Foundation");
-        exe.linkFramework("Cocoa");
-        exe.linkFramework("Quartz");
-        exe.linkFramework("QuartzCore");
-        exe.linkFramework("Metal");
-        exe.linkFramework("MetalKit");
-        exe.linkFramework("OpenGL");
-        exe.linkFramework("Audiotoolbox");
-        exe.linkFramework("CoreAudio");
-        exe.linkSystemLibrary("c++");
-    } else {
-        // Not tested
-        exe.linkSystemLibrary("GL");
-        exe.linkSystemLibrary("GLEW");
-        @panic("OS not supported. Try removing panic in build.zig if you want to test this");
-    }
-}
-// helper function to get SDK path on Mac sourced from: https://github.com/floooh/sokol-zig
-fn macos_frameworks_dir(b: *std.build.Builder) ![]u8 {
-    var str = try b.exec(&[_][]const u8{ "xcrun", "--show-sdk-path" });
-    const strip_newline = std.mem.lastIndexOf(u8, str, "\n");
-    if (strip_newline) |index| {
-        str = str[0..index];
-    }
-    const frameworks_dir = try std.mem.concat(b.allocator, u8, &[_][]const u8{ str, "/System/Library/Frameworks" });
-    return frameworks_dir;
 }

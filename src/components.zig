@@ -548,7 +548,7 @@ pub const Maquina = struct{
 
     allocator : *std.mem.Allocator,
 
-    pub export fn init(allocator : *std.mem.Allocator)*Maquina{
+    pub fn init(allocator : *std.mem.Allocator)*Maquina{
         var self:*Maquina = allocator.create(Maquina) catch unreachable;
 
         self.* = Maquina{

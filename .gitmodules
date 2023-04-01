@@ -1,7 +1,6 @@
 [submodule "src/cimgui"]
 	path = src/cimgui
 	url = https://github.com/cimgui/cimgui
-	
-[submodule "src/sokol-zig"]
-	path = src/sokol-zig
-	url = https://github.com/floooh/sokol-zig
+[submodule "src/sokol"]
+	path = src/sokol
+	url = https://github.com/floooh/sokol
