@@ -1,14 +1,14 @@
 const std = @import("std");
 const c = @import("c/c.zig");
-const assembler = @import("assembler.zig").assembler;
-const instruction = @import("assembler.zig").instruction;
-const MS = @import("components.zig").Maquina;
+const assembler = @import("./emulator/assembler.zig").assembler;
+const instruction = @import("emulator/assembler.zig").instruction;
+const MS = @import("emulator/components.zig").Maquina;
 const logger = std.log.scoped(.ui);
-const decode_instruction =@import("components.zig").decode_instruction;
-const MS_OPCODE= @import("components.zig").MS_OPCODE;
-const UC_STATES = @import("components.zig").UC.UC_STATES;
-const ALU_OPCODE =@import("components.zig").ALU_OPCODE;
-
+const decode_instruction =@import("emulator/components.zig").decode_instruction;
+const MS_OPCODE= @import("emulator/components.zig").MS_OPCODE;
+const UC_STATES = @import("emulator/components.zig").UC.UC_STATES;
+const ALU_OPCODE =@import("emulator/components.zig").ALU_OPCODE;
+const diagrams = @import("emulator/flowcharts.zig");
 
 const State = struct {
     pass_action: c.sg_pass_action,
@@ -40,14 +40,13 @@ var ass:assembler=assembler.init("",&arena);
 var alloc =std.heap.page_allocator;
 var maquina:*MS = undefined;
 var maquina_data_inspector :maquina_data =undefined;
+var file_path:[]u8=undefined;
 
-pub fn assemble_program(program:[:0]const u8)bool{
-    ass = assembler.init(program,&arena);
-    _=ass.assemble_program() catch return false;
-    return true;
 
+pub fn init_file_path()void{
+    alloc.free(file_path);
+    file_path = alloc.alloc(u8,1000) catch unreachable;
 }
-
 
 pub fn inspector_for_u16(name:[]const u8,memory:*u16)void{
     c.igTableNextRow(0,0);
@@ -148,6 +147,7 @@ pub fn inspector_labels()void{
         c.igTableSetupColumn("Etiqueta",0,0,0);
         c.igTableSetupColumn("Valor (hex)",0,0,0);
         c.igTableHeadersRow();
+        
 
         for(ass.instructions.items) |label|
         {
@@ -234,12 +234,8 @@ pub fn inspector_maquina()void{
 }
 
 
-pub fn load_memory()void{
-    maquina.load_memory(ass.build());
-}
-
-
 export fn init() void {
+    file_path = alloc.alloc(u8,100) catch unreachable;
     c.setupAssemblyEditor();
     maquina=MS.init(&alloc);
 
@@ -274,8 +270,12 @@ export fn update() void {
     {
         var text =c.getAssemblyEditorText();
         var len = std.mem.len(text);
-        if(len > 1 and assemble_program(text[0..len:0]))
-            load_memory();
+        if(len > 1){
+            //arena.allocator().destroy(ass);
+            ass = assembler.init(text[0..len:0], &arena);
+            _ = ass.assemble_program() catch return;
+            maquina.load_memory(ass.build());
+        }
     }
     c.igSameLine(0,20);
 
@@ -297,6 +297,51 @@ export fn update() void {
         alloc.destroy(maquina);
         maquina=MS.init(&alloc);
     }
+    c.igSameLine(0,20);
+
+    if (c.igButton("Generar diagrama",c.ImVec2{.x=0,.y=0}))
+    {
+        var text =c.getAssemblyEditorText();
+        var len = std.mem.len(text);
+        if(len > 1){
+            c.igOpenPopup_Str("generate_diagram",0);
+            init_file_path();
+
+            var i:u16=0;
+            while(i<1000) : (i+=1){
+                file_path[i]=0;
+            }
+
+        }
+    }
+
+    if(c.igBeginPopupModal("generate_diagram",null,0)){
+        var text =c.getAssemblyEditorText();
+        var len = std.mem.len(text);
+
+        var assembler_arena  = std.heap.ArenaAllocator.init(alloc);
+        
+
+
+
+        var file_path_len = std.mem.len(@ptrCast([*c]u8,file_path));
+        defer assembler_arena.deinit();
+
+        _  = c.igInputText("Nombre del archivo:",@ptrCast([*c]u8,file_path),1000,0,null,null);
+        if (c.igButton("Crear",c.ImVec2{.x=0,.y=0})){
+
+            var path = std.fmt.allocPrint(assembler_arena.allocator(), "{s}.html", .{file_path[0..file_path_len-1]}) catch unreachable;
+
+            diagrams.createDiagramFile(&assembler_arena,text[0..len:0],path) catch |err| switch (err){
+
+                else =>{logger.err("jaja error creando diagrama {}, archivo que se intentó abrir: {s}", .{err,file_path});},
+            };
+            c.igCloseCurrentPopup();
+
+        }
+        c.igEndPopup();
+    }
+
 
     inspector_labels();
     inspector_maquina();
@@ -335,6 +380,8 @@ export fn event(e: [*c]const c.sapp_event) void {
 
 pub fn main() void {
     var app_desc = std.mem.zeroes(c.sapp_desc);
+    app_desc.enable_clipboard=true;
+    app_desc.clipboard_size = 100_000_000;
     app_desc.width = 1280;
     app_desc.height = 720;
     app_desc.init_cb = init;
