@@ -46,7 +46,7 @@ pub fn build(b: *std.build.Builder) !void {
 
 
 
-    //cimgui
+    //cimgui 
     exe.addCSourceFile("src/c/compilation.c",&[_][]u8{""});
     const cpp_args = [_][]const u8{ "-Wno-deprecated-declarations", "-Wno-return-type-c-linkage", "-fno-exceptions", "-fno-threadsafe-statics" };
     exe.addCSourceFile("src/cimgui/imgui/imgui.cpp", &cpp_args);

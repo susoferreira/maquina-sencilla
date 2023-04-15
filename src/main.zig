@@ -10,6 +10,45 @@ const UC_STATES = @import("emulator/components.zig").UC.UC_STATES;
 const ALU_OPCODE =@import("emulator/components.zig").ALU_OPCODE;
 const diagrams = @import("emulator/flowcharts.zig");
 
+
+const example =     \\MOV zero i
+    \\MOV zero j
+    \\MOV zero res
+
+    \\:find_min CMP i num1
+    \\BEQ min_n1
+    \\CMP i num2
+    \\BEQ min_n2
+    \\ADD one i
+    \\CMP zero zero
+    \\BEQ find_min
+
+    \\:min_n1 MOV num1 min
+    \\MOV num2 max
+    \\CMP zero zero
+    \\BEQ distance
+
+    \\:min_n2 MOV num2 min
+    \\MOV num1 max
+
+    \\:distance ADD one i
+    \\ADD one j
+    \\CMP i max
+    \\BEQ found
+    \\CMP zero zero
+    \\BEQ distance
+    \\:found MOV j res
+
+    \\:num2 0x0000
+    \\:num1 0x0000
+    \\:i 0x0000
+    \\:j 0x0000
+    \\:zero 0x0000
+    \\:one 0x0001
+    \\:min 0x0000
+    \\:max 0x0000
+    \\:res 0x0000
+;
 const State = struct {
     pass_action: c.sg_pass_action,
     main_pipeline: c.sg_pipeline,
@@ -238,7 +277,7 @@ export fn init() void {
     file_path = alloc.alloc(u8,100) catch unreachable;
     c.setupAssemblyEditor();
     maquina=MS.init(&alloc);
-
+    c.editorSetText(example);
 
     var desc = std.mem.zeroes(c.sg_desc);
     desc.context = c.sapp_sgcontext();
@@ -320,17 +359,13 @@ export fn update() void {
         var len = std.mem.len(text);
 
         var assembler_arena  = std.heap.ArenaAllocator.init(alloc);
-        
-
-
-
         var file_path_len = std.mem.len(@ptrCast([*c]u8,file_path));
         defer assembler_arena.deinit();
 
         _  = c.igInputText("Nombre del archivo:",@ptrCast([*c]u8,file_path),1000,0,null,null);
         if (c.igButton("Crear",c.ImVec2{.x=0,.y=0})){
 
-            var path = std.fmt.allocPrint(assembler_arena.allocator(), "{s}.html", .{file_path[0..file_path_len-1]}) catch unreachable;
+            var path = std.fmt.allocPrint(assembler_arena.allocator(), "{s}.html", .{file_path[0..file_path_len]}) catch unreachable;
 
             diagrams.createDiagramFile(&assembler_arena,text[0..len:0],path) catch |err| switch (err){
 

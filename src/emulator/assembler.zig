@@ -160,12 +160,19 @@ pub const assembler = struct{
     fn assemble_all_labels(self:*assembler,lines: *std.mem.SplitIterator(u8))!void{
 
 
-        var indexes = std.AutoHashMap(u7,instruction).init(self.arena.allocator()); // array to find labels faster
+        var indexes = std.AutoHashMap(usize,instruction).init(self.arena.allocator()); // array to find labels faster
         defer indexes.deinit();
 
+        var line_number:usize = 1;
         var index:u7=0;
         lines.reset();
-        while(lines.next())  |line| : (index+=1){
+        while(lines.next())  |line| : (line_number+=1){
+
+            if(std.mem.trim(u8,line," \n\t").len==0 or line[0]==';'){
+                continue;
+            }
+            //an empty line does not count as an instruction,and does not increment the index, anything alse does
+            defer index+=1;
             if(!is_label(line)){
                 continue;
             }
@@ -182,14 +189,14 @@ pub const assembler = struct{
             };
 
 
-            logger.debug("found label {s} on line {} {s}\n",.{label.name.?,label.index,line});
+            logger.debug("found label {s} on line {} {s}\n",.{label.name.?,line_number,line});
             //put without clobbering data
             var value = self.labels.getOrPut(label.name.?) catch unreachable;
             if(!value.found_existing){
                 value.value_ptr.* = label;
-                indexes.put(label.index,label) catch unreachable;
+                indexes.put(line_number,label) catch unreachable;
             }else{
-                logger.err("Error en línea {}: Redefinición de la etiqueta {s}\n",.{index,label.name.?});
+                logger.err("Error en línea {}: Redefinición de la etiqueta {s}\n",.{line_number,label.name.?});
                 return error.LabelRedefinition;
             }
 
@@ -198,20 +205,27 @@ pub const assembler = struct{
 
         //we dont put data in them as we go because forward references, we put it all at the end
         lines.reset();
+
         index=0;
-        while(lines.next())|line| :(index+=1){
+        line_number=1;
+
+
+
+        while(lines.next())|line| :(line_number+=1){
             logger.debug("[{}] - {s}\n",.{index,line});
-            var label = indexes.get(index) orelse continue;
+            var label = indexes.get(line_number) orelse continue;
 
             logger.debug("trying to assemble label {s} on line {s}\n",.{label.name.?,line});
             var  result = self.assemble_line(line[label.name.?.len+1..line.len]) catch |err| switch(err){
-                error.InvalidCharacter  =>{logger.err("Error en la línea {}: Carácter inválido",.{index}); return err;},
-                error.Overflow          =>{logger.err("Error en la línea {}, Overflow",.{index}); return err;},
-                error.NotEnoughOperands =>{logger.err("Error en la línea {}, faltan operandos",.{index}); return err;},
-                error.TooManyWords      =>{logger.err("Error en la línea {}, demasiados operandos",.{index}); return err;},
-                error.invalidOperation  =>{logger.err("Error en la línea {}, operación inválida",.{index}); return err;},
-                error.LabelDoesNotExist =>{logger.err("Error en la línea {}, no existe la etiqueta referenciada",.{index});return err;},
-            };       
+                error.InvalidCharacter  =>{logger.err("Error en la línea {}: Carácter inválido",.{line_number}); return err;},
+                error.Overflow          =>{logger.err("Error en la línea {}, Overflow",.{line_number}); return err;},
+                error.NotEnoughOperands =>{logger.err("Error en la línea {}, faltan operandos",.{line_number}); return err;},
+                error.TooManyWords      =>{logger.err("Error en la línea {}, demasiados operandos",.{line_number}); return err;},
+                error.invalidOperation  =>{logger.err("Error en la línea {}, operación inválida",.{line_number}); return err;},
+                error.LabelDoesNotExist =>{logger.err("Error en la línea {}, no existe la etiqueta referenciada",.{line_number});return err;},
+            };
+            //only update index when instruction is actually found
+            index+=1;
             label.data = result.data;
             label.is_data = result.is_data;
             self.labels.put(label.name.?,label) catch unreachable; //we're clobbering existing labels with new ones
@@ -226,31 +240,33 @@ pub const assembler = struct{
     pub fn assemble_program(self:*assembler)!std.ArrayList(instruction){
         
         var index:u7=0;
+        var line_number:usize = 1;
         var lines = std.mem.split(u8,self.program,"\n");
 
         try self.assemble_all_labels(&lines);
 
-        index=0;//reusing the same variable because you have to be the change you want to see in the world
-        // #recycling #green
+
         lines.reset();
-        while(lines.next()) |line| : (index+=1){
-            if(std.mem.trim(u8,line," \t").len==0){
-                index-=1;
+        while(lines.next()) |line| : (line_number+=1){
+
+            if(std.mem.trim(u8,line," \n\t").len==0 or line[0]==';')
                 continue;
-            }
+            
+            defer index+=1;
             if(is_label(line))
                 continue;
+            logger.debug("ensambleando línea :{} con texto {s}", .{line_number,line});
+
             var result =  self.assemble_line(line) catch |err| switch(err){
-                error.TooManyWords =>{logger.err("Error en línea {}: Demasiadas palabras en una línea\n",.{index+1}); return err;},
-                error.InvalidCharacter =>{logger.err("Error en línea {}: Carácter inválido\n",.{index+1}); return err;},
-                error.Overflow =>{logger.err("Error en línea {}: Overflow\n",.{index+1}); return err;},
-                error.NotEnoughOperands =>{logger.err("Error en línea {}: Faltan operandos\n",.{index+1}); return err;},
-                error.invalidOperation =>{logger.err("Error en línea {}: Operación inválida\n",.{index+1}); return err;},
-                error.LabelDoesNotExist =>{logger.err("Error en línea {}: No existe la etiqueta referenciada\n",.{index+1}); return err;},
+                error.TooManyWords =>{logger.err("Error en línea {}: Demasiadas palabras en una línea\n",.{line_number}); return err;},
+                error.InvalidCharacter =>{logger.err("Error en línea {}: Carácter inválido\n",.{line_number}); return err;},
+                error.Overflow =>{logger.err("Error en línea {}: Overflow\n",.{line_number}); return err;},
+                error.NotEnoughOperands =>{logger.err("Error en línea {}: Faltan operandos\n",.{line_number}); return err;},
+                error.invalidOperation =>{logger.err("Error en línea {}: Operación inválida\n",.{line_number}); return err;},
+                error.LabelDoesNotExist =>{logger.err("Error en línea {}: No existe la etiqueta referenciada\n",.{line_number}); return err;},
 
                 //error.NotImplemented =>{logger.err("Error en línea {}: Característica no implementada",.{index}); return err;},
             };
-
 
             self.instructions.append(
                 .{
@@ -270,11 +286,11 @@ pub const assembler = struct{
     //builds program from assembled instructions + indices 
     pub fn build(self:*assembler)[]u16{
         var program = self.arena.allocator().alloc(u16,self.instructions.items.len) catch unreachable;
-
+        std.debug.print("items: {any}",.{self.instructions.items});
         // we assume only one instruction points to each index,
         // if this is not true something has gone very wrong
         for(self.instructions.items) |line|{
-            logger.debug("Building line {} with data {X}\n",.{line.index,line.data});
+            logger.debug("Building instruction {} with data {X}\n",.{line.index,line.data});
             program[line.index]= line.data;
 
         }

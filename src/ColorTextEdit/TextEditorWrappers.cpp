@@ -75,8 +75,13 @@ extern "C"{
                 editor.GetLanguageDefinition().mName.c_str());
 
     editor.Render("TextEditor");
-
+    
     }
+
+    void editorSetText(char* str){
+        editor.SetText(str);
+    }
+
     const char* getAssemblyEditorText(){
         delete [] lastText; 
         std::string text = editor.GetText();
