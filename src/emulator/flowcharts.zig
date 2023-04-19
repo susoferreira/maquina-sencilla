@@ -107,7 +107,7 @@ pub fn buildDiagram(alloc:std.mem.Allocator,instructions:[]instruction)!Diagram{
     var arena = std.heap.ArenaAllocator.init(alloc);
 
     var diagram = Diagram.init(arena);
-    diagram.push(.{.index=std.math.maxInt(u7),.data=0,.original_text="sentinel node",.name=null,.is_data=false},null);
+    diagram.push(.{.index=std.math.maxInt(u7),.data=0,.original_text="sentinel node",.name=null,.is_data=false,.original_line=0},null);
 
     std.sort.sort(instruction,instructions,{},cmpByIndex);
 

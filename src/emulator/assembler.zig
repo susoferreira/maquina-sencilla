@@ -22,6 +22,7 @@ fn is_label(line:[]const u8)bool{
     return false;
 }
 
+
 //like iterator.next() but ignores empty strings
 //sometimes returns null (like iterator)
 pub fn next_token(it :*std.mem.SplitIterator(u8))?[]const u8{
@@ -41,13 +42,12 @@ fn assert_no_more_tokens(words :*std.mem.SplitIterator(u8))!void{
 //represents any type of instruction
 pub const instruction = struct {
     index:u7,
-    data:u16, //labels dont have data before they have been all resolved
+    data:u16,
     //only labels have names
     name:?[]const u8,
-    //this two fields are used in the flowchart generator
-    //all instructions are data AND instructions at the same time, this is used to differenciate what should go into the flowchart
-    is_data:bool,
+    is_data:bool, //raw numbers are data
     original_text:[]const u8,
+    original_line:usize,
 };
 
 
@@ -64,6 +64,7 @@ test "test lowercase"{
     var testeacion = "JaJaJaaaAAAajasdoijAAAaAaaAAaaAaAaAaa";
     try expect(std.mem.eql(u8,toUpper(testeacion,std.heap.page_allocator),"JAJAJAAAAAAAJASDOIJAAAAAAAAAAAAAAAAAA"));
 }
+
 pub const assembler = struct{
     program : []const u8,
     arena : *std.heap.ArenaAllocator,
@@ -186,6 +187,7 @@ pub const assembler = struct{
                     .index=index,
                     .is_data=undefined, //is defined in the next loop of this function
                     .original_text=line,
+                    .original_line=line_number,
             };
 
 
@@ -210,7 +212,6 @@ pub const assembler = struct{
         line_number=1;
 
 
-
         while(lines.next())|line| :(line_number+=1){
             logger.debug("[{}] - {s}\n",.{index,line});
             var label = indexes.get(line_number) orelse continue;
@@ -230,7 +231,6 @@ pub const assembler = struct{
             label.is_data = result.is_data;
             self.labels.put(label.name.?,label) catch unreachable; //we're clobbering existing labels with new ones
             self.instructions.append(label) catch unreachable;
-            continue;
         }
         
     }
@@ -275,6 +275,7 @@ pub const assembler = struct{
                     .is_data=result.is_data,
                     .index=index,
                     .original_text=line,
+                    .original_line=line_number,
                 })
                 catch |err| switch(err){
                     error.OutOfMemory => {logger.err("Error en la línea {}: No hay suficiente memoria\n",.{index});unreachable;},
@@ -286,7 +287,6 @@ pub const assembler = struct{
     //builds program from assembled instructions + indices 
     pub fn build(self:*assembler)[]u16{
         var program = self.arena.allocator().alloc(u16,self.instructions.items.len) catch unreachable;
-        std.debug.print("items: {any}",.{self.instructions.items});
         // we assume only one instruction points to each index,
         // if this is not true something has gone very wrong
         for(self.instructions.items) |line|{
@@ -298,6 +298,18 @@ pub const assembler = struct{
         return program;
     }
     
+    //gets all labels that start with some character from a list of labels
+    pub fn get_breakpoints(self:*assembler)std.ArrayList(c_int){
+    var breaks = std.ArrayList(c_int).init(self.arena.allocator());
+    for (self.instructions.items)|ins|{
+        var name = ins.name orelse continue;
+        if(name[0] == '*'){ //TODO: extract constant
+            breaks.append(@intCast(c_int,ins.original_line)) catch unreachable;
+        }
+    }
+    return breaks;
+}
+
 };
 
 test "test assembler"{

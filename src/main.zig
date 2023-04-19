@@ -1,3 +1,7 @@
+pub const log_level: std.log.Level = .err;
+
+
+
 const std = @import("std");
 const c = @import("c/c.zig");
 const assembler = @import("./emulator/assembler.zig").assembler;
@@ -14,6 +18,9 @@ const diagrams = @import("emulator/flowcharts.zig");
 const example =     \\MOV zero i
     \\MOV zero j
     \\MOV zero res
+    \\;esto es un comentario
+    \\;las labels se escriben asi -> :<nombre>
+    \\;por ejemplo :etiqueta1
 
     \\:find_min CMP i num1
     \\BEQ min_n1
@@ -34,10 +41,13 @@ const example =     \\MOV zero i
     \\:distance ADD one i
     \\ADD one j
     \\CMP i max
-    \\BEQ found
+    \\BEQ *found
     \\CMP zero zero
     \\BEQ distance
-    \\:found MOV j res
+    \\;para crear un breakpoint se hace una label con * como primera letra del nombre
+    \\;por ejemplo :*end
+    \\;hay que recordar usar *end siempre al referirse a esa label, y no end
+    \\:*found MOV j res
 
     \\:num2 0x0000
     \\:num1 0x0000
@@ -80,6 +90,7 @@ var alloc =std.heap.page_allocator;
 var maquina:*MS = undefined;
 var maquina_data_inspector :maquina_data =undefined;
 var file_path:[]u8=undefined;
+var breakpoints:[]c_int=&[_]c_int{};
 
 
 pub fn init_file_path()void{
@@ -155,7 +166,6 @@ pub fn inspector_for_enum(name:[]const u8,comptime T:type,memory:*T,)void{
     c.igText(sentinel_name);
     _ = c.igTableNextColumn();
     if(c.igBeginCombo(label,@tagName(memory.*),0)){
-        logger.debug("Tipo de T: {s}\n",.{@typeName(T)});
         inline for(@typeInfo(T).Enum.fields)|field|{
             var field_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{field.name}, 0) catch unreachable;
             var selected = @enumToInt(memory.*) == field.value;
@@ -274,6 +284,7 @@ pub fn inspector_maquina()void{
 
 
 export fn init() void {
+
     file_path = alloc.alloc(u8,100) catch unreachable;
     c.setupAssemblyEditor();
     maquina=MS.init(&alloc);
@@ -285,6 +296,8 @@ export fn init() void {
     c.stm_setup();
     var imgui_desc = std.mem.zeroes(c.simgui_desc_t);
     c.simgui_setup(&imgui_desc);
+
+
 
     state.pass_action.colors[0].action = c.SG_ACTION_CLEAR;
     state.pass_action.colors[0].value = c.sg_color{ .r = clear_color[0], .g = clear_color[1], .b = clear_color[2], .a = 1.0 };
@@ -300,11 +313,11 @@ export fn update() void {
         .width = width,
         .height = height,
         .delta_time = dt,
-        .dpi_scale =  dpi_scale,
+        .dpi_scale = dpi_scale,
     });
 
     _=c.igBegin("Ensamblador",0,c.ImGuiWindowFlags_NoScrollbar);
-    c.igSetWindowSize_Vec2(c.ImVec2{.x=450,.y= 800}, c.ImGuiCond_FirstUseEver);
+    c.igSetWindowSize_Vec2(c.ImVec2{.x=550,.y= 800}, c.ImGuiCond_FirstUseEver);
     if (c.igButton("Ensamblar",c.ImVec2{.x=0,.y=0}))
     {
         var text =c.getAssemblyEditorText();
@@ -312,7 +325,14 @@ export fn update() void {
         if(len > 1){
             //arena.allocator().destroy(ass);
             ass = assembler.init(text[0..len:0], &arena);
-            _ = ass.assemble_program() catch return;
+            _ = ass.assemble_program() catch {};
+
+            breakpoints = ass.get_breakpoints().items;
+            if (breakpoints.len > 0 ){
+                logger.err("breakpoints : {any}",.{breakpoints} );
+                c.editorSetBreakpoints(breakpoints.ptr,@intCast(c_int,breakpoints.len));
+            }
+
             maquina.load_memory(ass.build());
         }
     }
@@ -326,6 +346,13 @@ export fn update() void {
     if(c.igButton("Avanzar una instrucción",c.ImVec2{.x=0,.y=0})){
         maquina.update() catch unreachable;
         while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
+            maquina.update() catch unreachable;
+        }
+    }
+
+    if (c.igButton("Ejecutar hasta un breakpoint",c.ImVec2{.x=0,.y=0}))
+    {
+        while(!std.mem.containsAtLeast(c_int,breakpoints,1,&[_]c_int{maquina.program_counter.stored_pc.*})){
             maquina.update() catch unreachable;
         }
     }
@@ -424,7 +451,7 @@ pub fn main() void {
     app_desc.cleanup_cb = cleanup;
     app_desc.event_cb = event;
     app_desc.enable_clipboard = true;
-    app_desc.window_title = "IMGUI (sokol-zig)";
+    app_desc.window_title = "Maquina Sencilla";
     app_desc.high_dpi=true;
     _ = c.sapp_run(&app_desc);
 }
