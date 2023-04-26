@@ -78,10 +78,17 @@ extern "C"{
     
     }
 
-    void editorSetText(char* str){
+    void editorSetText(const char* str){
         editor.SetText(str);
     }
 
+    void editorSetBreakpoints(int* indexes,int len_indexes){
+        bpts.clear();
+        for(int i =0;i<len_indexes;i++){
+            bpts.insert(indexes[i]);
+        }
+        editor.SetBreakpoints(bpts);
+    }
     const char* getAssemblyEditorText(){
         delete [] lastText; 
         std::string text = editor.GetText();

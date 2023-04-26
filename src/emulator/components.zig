@@ -235,7 +235,7 @@ pub const RI = struct{
     pub fn update(self:*RI)void{
         if(self.enable_read.*){
             decode_instruction(self.data.*,self.op,self.dir1,self.dir2);
-            logger.debug("IR - Decoded instruction - data = {X}, op = {}, dir1 = {}, dir2 = {}\n",.{self.data.*,self.op.*,self.dir1.*,self.dir2.*});
+            //logger.debug("IR - Decoded instruction - data = {X}, op = {}, dir1 = {}, dir2 = {}\n",.{self.data.*,self.op.*,self.dir1.*,self.dir2.*});
         }
         
     }

@@ -201,6 +201,8 @@ pub fn inspector_labels()void{
         for(ass.instructions.items) |label|
         {
             var name = label.name orelse continue;
+            if (!label.is_data)
+                continue;
 
             inspector_for_u16(name,&maquina.system_memory.memory[label.index]);
         }
@@ -284,11 +286,8 @@ pub fn inspector_maquina()void{
 
 
 export fn init() void {
-
     file_path = alloc.alloc(u8,100) catch unreachable;
-    c.setupAssemblyEditor();
     maquina=MS.init(&alloc);
-    c.editorSetText(example);
 
     var desc = std.mem.zeroes(c.sg_desc);
     desc.context = c.sapp_sgcontext();
@@ -301,8 +300,28 @@ export fn init() void {
 
     state.pass_action.colors[0].action = c.SG_ACTION_CLEAR;
     state.pass_action.colors[0].value = c.sg_color{ .r = clear_color[0], .g = clear_color[1], .b = clear_color[2], .a = 1.0 };
+    c.setupAssemblyEditor();
+    c.editorSetText(example);
+    c.init_hex_editor();
 }
 
+
+fn ensamblar()void{
+    var text = c.getAssemblyEditorText();
+    var len = std.mem.len(text);
+    if(len > 1){
+        //arena.allocator().destroy(ass);
+        ass = assembler.init(text[0..len:0], &arena);
+        _ = ass.assemble_program() catch return;
+
+        breakpoints = ass.get_breakpoints().items;
+        if (breakpoints.len > 0 ){
+            c.editorSetBreakpoints(breakpoints.ptr,@intCast(c_int,breakpoints.len));
+        }
+
+        maquina.load_memory(ass.build());
+    }
+}
 export fn update() void {
 
     const width = c.sapp_width();
@@ -320,21 +339,7 @@ export fn update() void {
     c.igSetWindowSize_Vec2(c.ImVec2{.x=550,.y= 800}, c.ImGuiCond_FirstUseEver);
     if (c.igButton("Ensamblar",c.ImVec2{.x=0,.y=0}))
     {
-        var text =c.getAssemblyEditorText();
-        var len = std.mem.len(text);
-        if(len > 1){
-            //arena.allocator().destroy(ass);
-            ass = assembler.init(text[0..len:0], &arena);
-            _ = ass.assemble_program() catch {};
-
-            breakpoints = ass.get_breakpoints().items;
-            if (breakpoints.len > 0 ){
-                logger.err("breakpoints : {any}",.{breakpoints} );
-                c.editorSetBreakpoints(breakpoints.ptr,@intCast(c_int,breakpoints.len));
-            }
-
-            maquina.load_memory(ass.build());
-        }
+        ensamblar();
     }
     c.igSameLine(0,20);
 
