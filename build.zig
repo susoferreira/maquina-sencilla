@@ -21,7 +21,7 @@ pub const Backend = enum {
     wgpu,
 };
 
-pub fn build(b: *std.build.Builder) !void {
+pub fn build(b: *std.Build) !void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -125,9 +125,8 @@ pub fn build(b: *std.build.Builder) !void {
         }
     }
 
-
-    exe.install();
-    const run_cmd = exe.run();
+    b.installArtifact(exe);
+    var run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
     const run_step = b.step("run", "Run the app");
