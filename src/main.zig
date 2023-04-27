@@ -82,6 +82,7 @@ var show_another_window: bool = false;
 var display_menu: bool = false;
 var f: f32 = 0.0;
 var clear_color: [3]f32 = .{ 0.2, 0.2, 0.2 };
+var generate_diagram = false;
 
 
 var arena =std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -91,7 +92,6 @@ var maquina:*MS = undefined;
 var maquina_data_inspector :maquina_data =undefined;
 var file_path:[]u8=undefined;
 var breakpoints:[]c_int=&[_]c_int{};
-
 
 pub fn init_file_path()void{
     alloc.free(file_path);
@@ -131,6 +131,27 @@ pub fn inspector_for_u7(name:[]const u8,memory:*u7)void{
     _ = c.igInputScalar(label,c.ImGuiDataType_U8,memory,null,null,"%02X",0);
 
 }
+
+
+//just displays a label
+pub fn const_int_inspector(name:[]const u8, value:usize)void{
+    c.igTableNextRow(0,0);
+
+    var sentinel_name = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{name[0..name.len]},0) catch unreachable;
+    defer alloc.free(sentinel_name);
+   
+    var value_txt = std.fmt.allocPrint(alloc,"{} (0x{X})",.{value,value}) catch unreachable;
+    defer alloc.free(value_txt);
+    var sentinel_value_txt = std.mem.concatWithSentinel(alloc,u8,&[_][]const u8{value_txt[0..value_txt.len]},0) catch unreachable;
+    defer alloc.free(sentinel_value_txt);
+
+    _ = c.igTableNextColumn();
+    c.igText(sentinel_name);
+
+    _ = c.igTableNextColumn();
+    _ = c.igText(sentinel_value_txt);
+
+    }
 
 pub fn inspector_for_bool(name:[]const u8,memory:*bool)void{
     c.igTableNextRow(0,0);
@@ -243,12 +264,17 @@ pub fn struct_inspector(comptime T :type, instance:T)void{
 
 
 
-                                else =>{logger.debug("Tipo no soportado: {s} es de tipo {s}",.{field.name,@typeName(field.type)});}
+                                else =>{
+                                    logger.debug("Tipo no soportado: {s} es de tipo {s}",.{field.name,@typeName(field.type)});
+                                }
                             }
                             
                         },
                     }
                 },
+
+                .Int => {const_int_inspector(field.name,@field(instance,field.name));},
+
                 else => {logger.debug("fields of struct_inspector should be all pointers but field {s} is a {s}",.{field.name,@typeName(field.type)});}
             }
 
@@ -265,6 +291,7 @@ pub fn inspector_maquina()void{
 
     _ = c.igBegin("Inspector de la maquina",0,0);
     var inspector_data =.{
+        .Elapsed_Cycles = maquina.cycle_counter,
         .UC_Internal_State=&maquina.control_unit.state,
         .pc = maquina.program_counter.stored_pc,
         .fz = &maquina.uc_in_flag_zero,
@@ -289,6 +316,7 @@ export fn init() void {
     file_path = alloc.alloc(u8,100) catch unreachable;
     maquina=MS.init(&alloc);
 
+
     var desc = std.mem.zeroes(c.sg_desc);
     desc.context = c.sapp_sgcontext();
     c.sg_setup(&desc);
@@ -296,10 +324,15 @@ export fn init() void {
     var imgui_desc = std.mem.zeroes(c.simgui_desc_t);
     c.simgui_setup(&imgui_desc);
 
+    var IO =c.igGetIO();
 
+    IO.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
+    IO.*.FontAllowUserScaling=true;
 
     state.pass_action.colors[0].action = c.SG_ACTION_CLEAR;
     state.pass_action.colors[0].value = c.sg_color{ .r = clear_color[0], .g = clear_color[1], .b = clear_color[2], .a = 1.0 };
+    //_ = c.ImFontAtlas_AddFontFromFileTTF(IO.*.Fonts,"SpaceMono-Bold.ttf",15,null,null);
+    //_ = c.ImFontAtlas_Build(IO.*.Fonts);
     c.setupAssemblyEditor();
     c.editorSetText(example);
     c.init_hex_editor();
@@ -322,70 +355,72 @@ fn ensamblar()void{
         maquina.load_memory(ass.build());
     }
 }
-export fn update() void {
 
-    const width = c.sapp_width();
-    const height = c.sapp_height();
-    const dt = c.stm_sec(c.stm_laptime(&last_time));
-    const dpi_scale =c.sapp_dpi_scale();
-    c.simgui_new_frame(&c.simgui_frame_desc_t{
-        .width = width,
-        .height = height,
-        .delta_time = dt,
-        .dpi_scale = dpi_scale,
-    });
-
-    _=c.igBegin("Ensamblador",0,c.ImGuiWindowFlags_NoScrollbar);
-    c.igSetWindowSize_Vec2(c.ImVec2{.x=550,.y= 800}, c.ImGuiCond_FirstUseEver);
-    if (c.igButton("Ensamblar",c.ImVec2{.x=0,.y=0}))
+fn editor_window()void{
+    if (c.igBeginMenuBar())
     {
-        ensamblar();
-    }
-    c.igSameLine(0,20);
+        if (c.igBeginMenu("Open",true))
+        { 
+            if (c.igMenuItem_Bool("Open file","",false,true))
+                logger.err("Not implemented {s}",.{"\n"});
 
-    if (c.igButton("Avanzar un ciclo de reloj",c.ImVec2{.x=0,.y=0}))
-    {
-        maquina.update() catch unreachable;
-    }
+            c.igSeparator();
 
-    if(c.igButton("Avanzar una instrucción",c.ImVec2{.x=0,.y=0})){
-        maquina.update() catch unreachable;
-        while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
-            maquina.update() catch unreachable;
-        }
-    }
+            if (c.igMenuItem_Bool("Save file (text)", "", false,true))
+                logger.err("Not implemented {s}",.{"\n"});
 
-    if (c.igButton("Ejecutar hasta un breakpoint",c.ImVec2{.x=0,.y=0}))
-    {
-        while(!std.mem.containsAtLeast(c_int,breakpoints,1,&[_]c_int{maquina.program_counter.stored_pc.*})){
-            maquina.update() catch unreachable;
-        }
-    }
-    c.igSameLine(0,20);
+            c.igSeparator();
+            
+            if(c.igMenuItem_Bool("Generate diagram","",false,true)){
+                var text =c.getAssemblyEditorText();
+                var len = std.mem.len(text);
+                if(len > 1){
+                    generate_diagram=true;
+                    init_file_path();
 
-    if (c.igButton("Resetear maquina",c.ImVec2{.x=0,.y=0}))
-    {
-        alloc.destroy(maquina);
-        maquina=MS.init(&alloc);
-    }
-    c.igSameLine(0,20);
+                    var i:u16=0;
+                    while(i<1000) : (i+=1){
+                        file_path[i]=0;
+                    }
 
-    if (c.igButton("Generar diagrama",c.ImVec2{.x=0,.y=0}))
-    {
-        var text =c.getAssemblyEditorText();
-        var len = std.mem.len(text);
-        if(len > 1){
-            c.igOpenPopup_Str("generate_diagram",0);
-            init_file_path();
-
-            var i:u16=0;
-            while(i<1000) : (i+=1){
-                file_path[i]=0;
+                }
             }
-
+            c.igEndMenu();
         }
+
+        if(c.igBeginMenu("Assembler",true)){
+            if (c.igMenuItem_Bool("Assemble","",false,true))
+                ensamblar();
+            if(c.igMenuItem_Bool("Advance one clock cycle","",false,true))
+                maquina.update() catch unreachable;
+            
+            if(c.igMenuItem_Bool("Advance one instruction","",false,true)){
+                maquina.update() catch unreachable;
+                while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
+                    maquina.update() catch unreachable;
+                }
+            }
+            if(c.igMenuItem_Bool("Run until breakpoint","",false,true)){
+                while(!std.mem.containsAtLeast(c_int,breakpoints,1,&[_]c_int{maquina.program_counter.stored_pc.*})){
+                    maquina.update() catch unreachable;
+                }
+            }
+            if(c.igMenuItem_Bool("Reset Machine","",false,true)){
+                alloc.destroy(maquina);
+                maquina=MS.init(&alloc);
+            }
+            c.igEndMenu();
+        }
+        c.igEndMenuBar();
     }
 
+    if(generate_diagram){
+    c.igOpenPopup_Str("generate_diagram",0);
+    }
+
+
+}
+fn diagram_popup()void{
     if(c.igBeginPopupModal("generate_diagram",null,0)){
         var text =c.getAssemblyEditorText();
         var len = std.mem.len(text);
@@ -403,30 +438,37 @@ export fn update() void {
 
                 else =>{logger.err("jaja error creando diagrama {}, archivo que se intentó abrir: {s}", .{err,file_path});},
             };
+            generate_diagram = false;
             c.igCloseCurrentPopup();
-
         }
         c.igEndPopup();
     }
+}
+
+export fn update() void {
+
+    const width = c.sapp_width();
+    const height = c.sapp_height();
+    const dt = c.stm_sec(c.stm_laptime(&last_time));
+    const dpi_scale =c.sapp_dpi_scale();
+    c.simgui_new_frame(&c.simgui_frame_desc_t{
+        .width = width,
+        .height = height,
+        .delta_time = dt,
+        .dpi_scale = dpi_scale,
+    });
+    _=c.igBegin("Ensamblador",0,c.ImGuiWindowFlags_NoScrollbar | c.ImGuiWindowFlags_MenuBar);
+    c.igSetWindowSize_Vec2(c.ImVec2{.x=550,.y= 800}, c.ImGuiCond_FirstUseEver);
 
 
+    editor_window();
+    diagram_popup();
     inspector_labels();
     inspector_maquina();
     c.drawAssemblyEditor();
     c.igEnd();
 
     c.draw_hex_editor(&maquina.system_memory.memory,maquina.system_memory.memory.len);
-
-
-    
-
-
-
-
-
-
-    
-
 
     //render stuff
     c.sg_begin_default_pass(&state.pass_action, width, height);

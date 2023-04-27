@@ -500,6 +500,7 @@ pub const UC = struct{
 pub const Maquina = struct{
     //mux inputs
     //pc in == pc_out
+    cycle_counter:usize=0,
     mux_in_dir1:u7,
     mux_in_dir2:u7,
     mux_in_selection:MUX_CHOICES = MUX_CHOICES.CHOOSE_PC,
@@ -664,6 +665,7 @@ pub const Maquina = struct{
     }
 
     pub fn update(self:*Maquina)!void{
+        self.cycle_counter+=1;
         self.control_unit.update();
 
 
