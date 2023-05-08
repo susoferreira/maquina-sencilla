@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+
     exe.linkLibC();
     exe.linkLibCpp();//imgui needs libcpp
     exe.addIncludePath("src/");
@@ -121,6 +122,9 @@ pub fn build(b: *std.Build) !void {
             }
         }
         else if (exe.target.isWindows()) {
+            // we need to disable lto to build release on windows
+            // because of https://github.com/ziglang/zig/issues/8531
+            exe.want_lto=false;
             exe.linkSystemLibraryName("kernel32");
             exe.linkSystemLibraryName("user32");
             exe.linkSystemLibraryName("gdi32");
