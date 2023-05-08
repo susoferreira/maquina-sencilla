@@ -19,6 +19,11 @@ Los diagramas se generan analizando las instrucciones y usando mermaid. El resul
 ### Avanzado 
 - El inspector de variables internas de la máquina permite modificar su estado, aunque modificar algunas de estas variables (como ALU_ENABLE_A la mayoría del tiempo no afectará a la ejecución, porque son inmediatamente sobreescritas según el estado de  ```UC_INTERNAL_STATE```)
 
+## Compilar
+1. Descargar [Zig](https://ziglang.org/)
+2. ```zig build run```
+3. Mirar la documentación de zig si quieres compilar a otros targets
+
 ## Librerías usadas
 
 - [Sokol](https://github.com/floooh/sokol) (graphics backend)
