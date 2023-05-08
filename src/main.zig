@@ -13,7 +13,7 @@ const MS_OPCODE= @import("emulator/components.zig").MS_OPCODE;
 const UC_STATES = @import("emulator/components.zig").UC.UC_STATES;
 const ALU_OPCODE =@import("emulator/components.zig").ALU_OPCODE;
 const diagrams = @import("emulator/flowcharts.zig");
-
+const nfd = @import("nfd");
 
 const example =     \\MOV zero i
     \\MOV zero j
@@ -261,9 +261,6 @@ pub fn struct_inspector(comptime T :type, instance:T)void{
                                     @typeInfo(field.type).Pointer.child,
                                     @field(instance,field.name),
                                 );},
-
-
-
                                 else =>{
                                     logger.debug("Tipo no soportado: {s} es de tipo {s}",.{field.name,@typeName(field.type)});
                                 }
@@ -356,19 +353,189 @@ fn ensamblar()void{
     }
 }
 
+fn save_asm()void{
+
+    const path = nfd.saveFileDialog("*",null) catch |err| switch(err){
+    error.NfdError => {logger.err("error encontrado abriendo el file browser: {any}\n", .{err} );return;},
+    };
+
+    //null check
+    if (path) |p| {
+        save_to_file(c.getAssemblyEditorText()[0..std.mem.len(c.getAssemblyEditorText())], p);
+        defer nfd.freePath(p);
+    }
+}
+
+fn read_asm()void {
+    const path = nfd.openFileDialog("*",null) catch |err| switch(err){
+    error.NfdError => {logger.err("error encontrado abriendo el file browser: {any}\n", .{err} );return;},
+    };
+    if (path) |p|{
+        var text = std.fs.cwd().readFileAlloc(alloc,p,2*1024*1024) catch |err| switch(err){
+            else => {logger.err("error leyendo el archivo {s} -  {}",.{p,err});return;}
+        };
+        //puede que no haya que liberarlo al momento?
+        defer alloc.free(text);
+        
+        var text_sentinel = std.mem.concatWithSentinel(alloc,u8,&[_][]u8{text},0) catch unreachable;
+        defer alloc.free(text_sentinel);
+
+        c.editorSetText(text_sentinel);
+
+    }
+}
+
+fn save_to_file(data: []const u8, path: []const u8)void{
+    var outfile = std.fs.cwd().createFile(path, .{ .read = true }) catch |err| switch(err){
+            else => {logger.err("error creando el archivo {s} - {any}\n",.{path,err});return;},
+        };
+
+    defer outfile.close();
+    _ = outfile.write(data) catch |err| switch(err){
+            else => {logger.err("error escribiendo al archivo {s} - {any}\n", .{path,err});return;}
+        };
+
+}
+fn export_ms()void{
+    const path = nfd.saveFileDialog("*",null) catch |err| switch(err){
+    error.NfdError => {logger.err("error encontrado abriendo el file browser: {any}\n", .{err} );return;},
+    };
+
+    //null check
+    if (path) |p| {
+        var local_arena = std.heap.ArenaAllocator.init(alloc);
+        defer local_arena.deinit();
+        defer nfd.freePath(p);
+        var data = ms_program(&local_arena) catch |err| switch(err){
+            else =>{logger.err("Error al intentar exportar a .ms - {any}\n", .{err});return;}
+        };
+        save_to_file(data, p);
+    }
+}
+
+fn ms_program(local_arena : *std.heap.ArenaAllocator)![]u8{
+    
+    var asss = assembler.init(c.getAssemblyEditorText()[0..std.mem.len(c.getAssemblyEditorText()):0],local_arena);
+
+    var instructions = try asss.assemble_program();
+    //instructions are not sorted
+
+    
+    var ram :[256]u8 =[_]u8{0}**256;
+    std.mem.copy(u8,&ram,std.mem.sliceAsBytes(asss.build()));
+    
+    
+    var tag_data_map:[128]u8 = [_]u8{0}**128;
+
+    var num_tags_and_data : u32 = 0;
+
+    for(instructions.items) |ins| {
+
+        if(ins.is_data){
+            tag_data_map[ins.index]= 2;
+        }else{
+            tag_data_map[ins.index] = 1;
+        }
+
+        if(ins.name) |name| {
+            _=name;
+            num_tags_and_data+=1;
+        }
+    }
+
+    var tag_position_index :u8 = 0;
+    var tag_names = try local_arena.allocator().alloc(u8,num_tags_and_data*7);
+    
+
+    for(tag_names)|*byte|{
+        byte.*=0;
+    }
+
+
+    var tag_positions = try local_arena.allocator().alloc(u16,num_tags_and_data);
+
+
+    //index but only for tags
+    var tag_index:u8 = 0;
+
+    for(instructions.items)|ins|{
+        if(!ins.is_data and ins.name==null)
+            continue;
+        
+        var name = ins.name orelse {logger.err("No se puede exportar un dato sin nombre en la línea {}\n",.{ins.index});return error.NotSupported;};
+
+        tag_positions[tag_position_index] = ins.index;
+        tag_position_index+=1;
+
+        std.mem.copy(u8, tag_names[tag_index*7..tag_names.len],name[0..std.math.min(6,name.len)]);
+        tag_index+=1;
+    }
+
+    var mem_out = std.mem.concat(local_arena.allocator(),u8,&[_][]u8{
+        std.mem.asBytes(&num_tags_and_data) ,
+        &ram,
+        &tag_data_map,
+        tag_names,
+        std.mem.sliceAsBytes(tag_positions)
+        });
+
+    return mem_out;
+}
+
+fn advance_instruction()void{
+    maquina.update() catch unreachable;
+    while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
+        maquina.update() catch unreachable;
+    }
+}
+
+fn run_until_breakpoint()void{
+    while(!std.mem.containsAtLeast(c_int,breakpoints,1,&[_]c_int{maquina.program_counter.stored_pc.*})){
+        maquina.update() catch unreachable;
+    }
+}
+
+fn reset_machine()void{
+    alloc.destroy(maquina);
+    maquina=MS.init(&alloc);
+}
+
+fn shortcuts()void{
+    if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_T, 0 , 0)){
+        ensamblar();
+    }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_O, 0 , 0)){
+        read_asm();
+    }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_S, 0 , 0)){
+        save_asm();
+    }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_U, 0 , 0)){
+        maquina.update() catch unreachable;
+    }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_Enter, 0 , 0)){
+        advance_instruction();
+    }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_B, 0 , 0)){
+        run_until_breakpoint();
+    }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_R, 0 , 0)){
+        reset_machine();
+    }
+}
+
+
 fn editor_window()void{
+
+        //shorcuts here are only informative, they must be added in shortcuts()
     if (c.igBeginMenuBar())
     {
         if (c.igBeginMenu("Open",true))
         { 
-            if (c.igMenuItem_Bool("Open file","",false,true))
-                logger.err("Not implemented {s}",.{"\n"});
-
+            if (c.igMenuItem_Bool("Open file","Ctrl+O",false,true))
+                read_asm();
             c.igSeparator();
 
-            if (c.igMenuItem_Bool("Save file (text)", "", false,true))
-                logger.err("Not implemented {s}",.{"\n"});
-
+            if (c.igMenuItem_Bool("Save file (text)", "Ctrl+S", false,true)){
+                save_asm();
+            }
+            if (c.igMenuItem_Bool("Export to MSDOS version", "", false,true)){
+                export_ms();
+            }
             c.igSeparator();
             
             if(c.igMenuItem_Bool("Generate diagram","",false,true)){
@@ -387,27 +554,22 @@ fn editor_window()void{
             }
             c.igEndMenu();
         }
+        
 
         if(c.igBeginMenu("Assembler",true)){
-            if (c.igMenuItem_Bool("Assemble","",false,true))
+            if (c.igMenuItem_Bool("Assemble","Ctrl+T",false,true))
                 ensamblar();
-            if(c.igMenuItem_Bool("Advance one clock cycle","",false,true))
+            if(c.igMenuItem_Bool("Advance one clock cycle","Ctrl+U",false,true))
                 maquina.update() catch unreachable;
             
-            if(c.igMenuItem_Bool("Advance one instruction","",false,true)){
-                maquina.update() catch unreachable;
-                while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
-                    maquina.update() catch unreachable;
-                }
+            if(c.igMenuItem_Bool("Advance one instruction","Ctrl+Enter",false,true)){
+                advance_instruction();
             }
-            if(c.igMenuItem_Bool("Run until breakpoint","",false,true)){
-                while(!std.mem.containsAtLeast(c_int,breakpoints,1,&[_]c_int{maquina.program_counter.stored_pc.*})){
-                    maquina.update() catch unreachable;
-                }
+            if(c.igMenuItem_Bool("Run until breakpoint","Ctrl+B",false,true)){
+                run_until_breakpoint();
             }
-            if(c.igMenuItem_Bool("Reset Machine","",false,true)){
-                alloc.destroy(maquina);
-                maquina=MS.init(&alloc);
+            if(c.igMenuItem_Bool("Reset Machine","Ctrl+R",false,true)){
+                reset_machine();
             }
             c.igEndMenu();
         }
@@ -459,13 +621,12 @@ export fn update() void {
     });
     _=c.igBegin("Ensamblador",0,c.ImGuiWindowFlags_NoScrollbar | c.ImGuiWindowFlags_MenuBar);
     c.igSetWindowSize_Vec2(c.ImVec2{.x=550,.y= 800}, c.ImGuiCond_FirstUseEver);
-
-
     editor_window();
     diagram_popup();
     inspector_labels();
     inspector_maquina();
     c.drawAssemblyEditor();
+    shortcuts();
     c.igEnd();
 
     c.draw_hex_editor(&maquina.system_memory.memory,maquina.system_memory.memory.len);

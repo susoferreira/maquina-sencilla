@@ -3,6 +3,9 @@ const CrossTarget = @import("std").zig.CrossTarget;
 const Mode = std.builtin.Mode;
 const LibExeObjStep = std.build.LibExeObjStep;
 
+// native file dialog
+const nfd_build = @import("deps/nfd-zig/build.zig");
+
 
 pub const Config = struct {
     backend: Backend = .auto,
@@ -45,6 +48,10 @@ pub fn build(b: *std.Build) !void {
     exe.addIncludePath("src/");
 
 
+    //native file dialog
+    exe.addModule("nfd", nfd_build.getModule(b));
+    const nfd_lib = nfd_build.makeLib(b,target,optimize);
+    exe.linkLibrary(nfd_lib);
 
     //cimgui 
     exe.addCSourceFile("src/c/compilation.c",&[_][]u8{""});
