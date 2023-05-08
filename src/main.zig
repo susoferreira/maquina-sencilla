@@ -82,7 +82,6 @@ var show_another_window: bool = false;
 var display_menu: bool = false;
 var f: f32 = 0.0;
 var clear_color: [3]f32 = .{ 0.2, 0.2, 0.2 };
-var generate_diagram = false;
 
 
 var arena =std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -90,13 +89,9 @@ var ass:assembler=assembler.init("",&arena);
 var alloc =std.heap.page_allocator;
 var maquina:*MS = undefined;
 var maquina_data_inspector :maquina_data =undefined;
-var file_path:[]u8=undefined;
 var breakpoints:[]c_int=&[_]c_int{};
 
-pub fn init_file_path()void{
-    alloc.free(file_path);
-    file_path = alloc.alloc(u8,1000) catch unreachable;
-}
+
 
 pub fn inspector_for_u16(name:[]const u8,memory:*u16)void{
     c.igTableNextRow(0,0);
@@ -310,7 +305,6 @@ pub fn inspector_maquina()void{
 
 
 export fn init() void {
-    file_path = alloc.alloc(u8,100) catch unreachable;
     maquina=MS.init(&alloc);
 
 
@@ -518,7 +512,25 @@ fn shortcuts()void{
     }
 }
 
+fn create_diagram()void{
+    var text =c.getAssemblyEditorText();
+    var len = std.mem.len(text);
+    if(len > 1){
+        var diagram_arena = std.heap.ArenaAllocator.init(alloc);
 
+        const path = nfd.saveFileDialog("*",null) catch |err| switch(err){
+            error.NfdError => {logger.err("error encontrado abriendo el file browser: {any}\n", .{err} );return;},
+            };
+
+        //null check
+        if (path) |p| {
+            diagrams.createDiagramFile(&diagram_arena,text[0..len:0],p) catch |err| switch(err){
+                else => {logger.err("error creando diagrama: {any}",.{err});},
+            };
+            defer nfd.freePath(p);
+        }
+    }
+}
 fn editor_window()void{
 
         //shorcuts here are only informative, they must be added in shortcuts()
@@ -539,21 +551,11 @@ fn editor_window()void{
             c.igSeparator();
             
             if(c.igMenuItem_Bool("Generate diagram","",false,true)){
-                var text =c.getAssemblyEditorText();
-                var len = std.mem.len(text);
-                if(len > 1){
-                    generate_diagram=true;
-                    init_file_path();
-
-                    var i:u16=0;
-                    while(i<1000) : (i+=1){
-                        file_path[i]=0;
-                    }
-
+                    create_diagram();
                 }
-            }
             c.igEndMenu();
-        }
+            }
+    
         
 
         if(c.igBeginMenu("Assembler",true)){
@@ -575,37 +577,8 @@ fn editor_window()void{
         }
         c.igEndMenuBar();
     }
-
-    if(generate_diagram){
-    c.igOpenPopup_Str("generate_diagram",0);
-    }
-
-
 }
-fn diagram_popup()void{
-    if(c.igBeginPopupModal("generate_diagram",null,0)){
-        var text =c.getAssemblyEditorText();
-        var len = std.mem.len(text);
 
-        var assembler_arena  = std.heap.ArenaAllocator.init(alloc);
-        var file_path_len = std.mem.len(@ptrCast([*c]u8,file_path));
-        defer assembler_arena.deinit();
-
-        _  = c.igInputText("Nombre del archivo:",@ptrCast([*c]u8,file_path),1000,0,null,null);
-        if (c.igButton("Crear",c.ImVec2{.x=0,.y=0})){
-
-            var path = std.fmt.allocPrint(assembler_arena.allocator(), "{s}.html", .{file_path[0..file_path_len]}) catch unreachable;
-
-            diagrams.createDiagramFile(&assembler_arena,text[0..len:0],path) catch |err| switch (err){
-
-                else =>{logger.err("jaja error creando diagrama {}, archivo que se intentó abrir: {s}", .{err,file_path});},
-            };
-            generate_diagram = false;
-            c.igCloseCurrentPopup();
-        }
-        c.igEndPopup();
-    }
-}
 
 export fn update() void {
 
@@ -622,7 +595,6 @@ export fn update() void {
     _=c.igBegin("Ensamblador",0,c.ImGuiWindowFlags_NoScrollbar | c.ImGuiWindowFlags_MenuBar);
     c.igSetWindowSize_Vec2(c.ImVec2{.x=550,.y= 800}, c.ImGuiCond_FirstUseEver);
     editor_window();
-    diagram_popup();
     inspector_labels();
     inspector_maquina();
     c.drawAssemblyEditor();

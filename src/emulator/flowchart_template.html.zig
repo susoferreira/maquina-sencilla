@@ -2,8 +2,8 @@ pub const template = \\<html>
 \\  <body>
 \\    Diagrama generado a partir del código ensamblador:
 \\    <pre class="mermaid">
-\\      flowchart TD;
-\\      {s}
+\\flowchart TD;
+\\{s}
 \\    </pre>
 \\    <script type="module">
 \\      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';

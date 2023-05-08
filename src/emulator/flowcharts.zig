@@ -194,6 +194,7 @@ pub fn diagramToMermaid(alloc:std.mem.Allocator, diagram :*Diagram)![]const u8{
                 \\{} -->|No|{}
                 \\
                 ;
+
                 const next = diagram.next() orelse {
                     logger.err("Se ha encontrado un CMP sin ninguna instrucción despues en la linea {s}",.{node.own.original_text});
                     return error.WrongProgramStructure;
@@ -211,11 +212,24 @@ pub fn diagramToMermaid(alloc:std.mem.Allocator, diagram :*Diagram)![]const u8{
                     return error.WrongProgramStructure;
                 }
 
-                var text = try std.fmt.allocPrint(arena.allocator(),format,
-                .{node.own.index,cmp_text,next.alternate.?,
-                        node.own.index,next.next.?.own.index});
-                try mermaid.append(text);
+                var text:[]u8 = undefined;
+                //always jump
+                if(op1==op2){
+                    //format if both arguments are equal(always true)
+                    const alternate_format =
+                    \\ {}{{Saltar}}-->{}
+                    \\
+                    ;
+                    text = try std.fmt.allocPrint(arena.allocator(),alternate_format,
+                        .{node.own.index,next.alternate.?});
+                }else{
+                    text = try std.fmt.allocPrint(arena.allocator(),format,
+                    .{node.own.index,cmp_text,next.alternate.?,
+                            node.own.index,next.next.?.own.index});
+                }
+            try mermaid.append(text);
             },
+
 
             .BEQ => {logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea \"{s}\", esto no está soportado",.{node.own.original_text});},
         }
@@ -229,7 +243,6 @@ pub fn createDiagramFile(arena:*std.heap.ArenaAllocator,program:[:0]const u8,pat
 
     var ass = assembler.assembler.init(program,arena);
     var instructions = try ass.assemble_program();
-
 
     var diagram = try buildDiagram(arena.allocator(),instructions.items);
 
