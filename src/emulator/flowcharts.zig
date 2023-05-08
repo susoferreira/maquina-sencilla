@@ -234,14 +234,10 @@ pub fn createDiagramFile(arena:*std.heap.ArenaAllocator,program:[:0]const u8,pat
     var diagram = try buildDiagram(arena.allocator(),instructions.items);
 
     const mermaid =try diagramToMermaid(arena.allocator(),&diagram);
-
     
     var outfile = try std.fs.cwd().createFile(path, .{ .read = true });
     defer outfile.close();
-    _ = try outfile.write(try std.fmt.allocPrint(arena.allocator(),template, .{mermaid}));
-
-
-    
+    _ = try outfile.write(try std.fmt.allocPrint(arena.allocator(),template, .{mermaid}));    
 }
 
 test "test crear linked list"{

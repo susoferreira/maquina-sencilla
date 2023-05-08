@@ -289,6 +289,7 @@ pub const assembler = struct{
         var program = self.arena.allocator().alloc(u16,self.instructions.items.len) catch unreachable;
         // we assume only one instruction points to each index,
         // if this is not true something has gone very wrong
+        
         for(self.instructions.items) |line|{
             logger.debug("Building instruction {} with data {X}\n",.{line.index,line.data});
             program[line.index]= line.data;
