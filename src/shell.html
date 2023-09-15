@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Maquina sencilla</title>
+    <style>
+
+      /* legacy code
+      @media print {
+        @page {
+          margin:0;
+          size:var(--printwidth) var(--printheight)
+        }
+        body {
+          visibility: hidden;
+        }
+        .mermaid #id1 {
+          visibility:visible;
+        }
+      }
+    */
+    .emscripten {
+      padding: 0px;
+      margin: 0px;
+      position:fixed;
+      display: block;
+      left:0; top:0;
+      width:100%;
+      height:100%;
+    }
+      /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+    canvas.emscripten { border: 0px none; background-color: black; }
+
+    body {font-family: Arial, Helvetica, sans-serif;margin:0px}
+
+    /* The Modal (background) */
+    .modal {
+        display: none; /* Hidden by default */
+        position: fixed; /* Stay in place */
+        z-index: 1; /* Sit on top */
+        padding-top: 100px; /* Location of the box */
+        left: 0;
+        top: 0;
+        width: 100%; /* Full width */
+        height: 80%; /* Full height */
+        overflow: auto; /* Enable scroll if needed */
+        background-color: rgb(0,0,0); /* Fallback color */
+        background-color: rgba(0, 0, 0, 0.4); /* Black w/ opacity */
+    }
+
+    /* Modal Content */
+    .modal-content {
+        position: relative;
+        background-color: #fefefe;
+        margin: auto;
+        padding: 0;
+        border: 1px solid #888;
+        width: 80%;
+        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+        -webkit-animation-name: animatetop;
+        -webkit-animation-duration: 0.4s;
+        animation-name: animatetop;
+        animation-duration: 0.4s
+    }
+    .mermaid{
+      display:flex;
+      justify-content: center;
+    }
+    /* Add Animation */
+    @-webkit-keyframes animatetop {
+        from {top:-300px; opacity:0} 
+        to {top:0; opacity:1}
+    }
+
+    @keyframes animatetop {
+        from {top:-300px; opacity:0}
+        to {top:0; opacity:1}
+    }
+
+    /* The Close Button */
+    .close {
+        color: white;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+    }
+
+    .close:hover,
+    .close:focus {
+        color: #000;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .modal-header {
+        padding: 2px 16px;
+        background-color: #5cb85c;
+        color: white;
+    }
+
+    .modal-body {padding: 2px 16px;}
+
+    .modal-footer {
+        padding: 2px 16px;
+        background-color: #5cb85c;
+        color: white;
+    }
+    </style>
+  </head>
+  <body>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    <p class="mermaid-source" style="visibility:hidden;"></p>
+    <div id="flowchartsModal" class="modal">
+
+        <!-- Modal content -->
+        <div class="modal-content">
+          <div class="modal-header">
+            <span class="close">&times;</span>
+            <h2>Diagrama</h2>
+          </div>
+          <div class="mermaid">
+              <div id="id1"></div>
+          </div>
+          <div class="modal-footer">
+              <button class="copy">Copiar código de mermaid.js</button>
+              <button class="download">Descargar imágen de vectores</button>
+          </div>
+        </div>
+      
+    </div>
+    
+<script src=" https://cdn.jsdelivr.net/npm/mermaid@10.3.0/dist/mermaid.min.js "></script>
+<script>
+  mermaid.initialize({ startOnLoad: false });
+
+  function drawFlowchart(text){
+    mermaid.render('id1', text).then((result) =>{
+    document.querySelector('.mermaid').innerHTML = result.svg
+
+    });
+
+  }
+  
+  const downloadBlob = (data, fileName, mimeType) => {
+    const blob = new Blob([data], {
+      type: mimeType
+    })
+    const url = window.URL.createObjectURL(blob)
+    downloadURL(url, fileName)
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+  }
+
+  downloadURL = function(data, fileName) {
+    var a;
+    a = document.createElement('a');
+    a.href = data;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.style = 'display: none';
+    a.click();
+    a.remove();
+  };
+
+  document.getElementsByClassName("download")[0].onclick = function(){
+    var svgImage = document.getElementById('id1');
+    var svgXML = (new XMLSerializer).serializeToString(svgImage);
+    downloadString(svgXML,"svg","diagrama.svg");
+  }
+
+
+  document.getElementsByClassName("copy")[0].onclick = async () => {
+      try {
+        let text = document.getElementsByClassName('mermaid-source')[0].value;
+        await navigator.clipboard.writeText(text);
+        console.log('Content copied to clipboard');
+      } catch (err) {
+        console.error('Failed to copy: ', err);
+      }
+    }
+
+
+  
+    var span = document.getElementsByClassName("close")[0];
+    span.onclick = function() {
+      modal.style.display = "none";
+    }
+    
+    // When the user clicks anywhere outside of the modal, close it
+  var modal = document.getElementById("flowchartsModal");
+  window.onclick = function(event) {
+  if (event.target == modal) {
+    modal.style.display = "none";
+  }
+  }
+</script>
+
+<script type="text/javascript">
+  var Module = {
+      preRun: [],
+      postRun: [],
+      print: (function() {
+          return function(text) {
+              text = Array.prototype.slice.call(arguments).join(' ');
+              console.log(text);
+          };
+      })(),
+      printErr: function(text) {
+          text = Array.prototype.slice.call(arguments).join(' ');
+          console.error(text);
+      },
+      canvas: (function() {
+          var canvas = document.getElementById('canvas');
+          canvas.addEventListener("webglcontextlost", function(e) { alert('FIXME: WebGL context lost, please reload the page'); e.preventDefault(); }, false);
+          return canvas;
+      })(),
+      setStatus: function(text) { },
+      monitorRunDependencies: function(left) { },
+  };
+  window.onerror = function(event) {
+      console.log("onerror: " + event.message);
+  };
+</script>
+    {{{ SCRIPT }}}
+  </body>
+</html>

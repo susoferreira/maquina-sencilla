@@ -1,0 +1,38 @@
+MOV zero i
+MOV zero j
+MOV zero res
+;esto es un comentario
+;las labels se escriben asi -> <nombre> : <instrucción o dato>
+;por ejemplo etiqueta1 : MOV 0 1
+find_min : CMP i num1
+BEQ min_n1
+CMP i num2
+BEQ min_n2
+ADD one i
+CMP zero zero
+BEQ find_min
+min_n1 : MOV num1 min
+MOV num2 max
+CMP zero zero
+BEQ distance
+min_n2 : MOV num2 min
+MOV num1 max
+distance : ADD one i
+ADD one j
+CMP i max
+BEQ found
+CMP zero zero
+BEQ distance
+;para crear un breakpoint se hace una label con * como primera letra del nombre
+;por ejemplo :*end
+;el asterisco solo se pone en la línea que se quiera poner el breakpoint, no forma parte del nombre
+*found : MOV j res
+num2 : 0x0000
+num1 : 0x0000
+i : 0x0000
+j : 0x0000
+zero : 0x0000
+one : 0x0001
+min : 0x0000
+max : 0x0000
+res : 0x0000

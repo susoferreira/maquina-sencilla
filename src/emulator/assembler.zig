@@ -1,4 +1,5 @@
-const std= @import("std");
+const std = @import("std");
+const components = @import("./components.zig");
 const expect = std.testing.expect;
 
 const logger = std.log.scoped(.assembler);
@@ -15,362 +16,257 @@ fn is_number(str: []const u8)bool{
     return false;
 }
 
-fn is_label(line:[]const u8)bool{
-    if (line.len > 0 and line[0]==':'){
-        return true;
-    }
-    return false;
-}
-
-
-//like iterator.next() but ignores empty strings
-//sometimes returns null (like iterator)
-pub fn next_token(it :*std.mem.SplitIterator(u8))?[]const u8{
-    var token:[]const u8="";
-
-    while (token.len==0){
-        token = it.next() orelse return null;
-    }
-    return token;
-}
-
-fn assert_no_more_tokens(words :*std.mem.SplitIterator(u8))!void{
-    if(next_token(words) != null)
-        return error.TooManyWords;
-}
-
 //represents any type of instruction
 pub const instruction = struct {
-    index:u7,
-    data:u16,
+    index: u7,
+    data: u16,
     //only labels have names
-    name:?[]const u8,
-    is_data:bool, //raw numbers are data
-    original_text:[]const u8,
-    original_line:usize,
+    name: ?[]const u8,
+    is_data: bool, //raw numbers are data
+    is_breakpoint:bool,
+    original_text: []const u8,
+    original_line: usize,
+};
+
+pub const assembler_result = struct {
+    allocator : std.mem.Allocator,
+
+    instructions: std.ArrayList(instruction),
+    labels: std.StringHashMap(*instruction),
+
+    breakpoint_indexes : std.ArrayList(u7),
+    breakpoint_lines : std.ArrayList(c_int), 
+
+    program : [128]u16,
+
+    pub fn deinit(self:*assembler_result)void{
+        self.instructions.deinit();
+        self.labels.deinit();
+        self.breakpoint_indexes.deinit();
+        self.breakpoint_lines.deinit();
+    }
 };
 
 
-//freeing is on the caller
-pub fn toUpper(str: [:0]const u8,allocator : std.mem.Allocator)[]u8{
-    var lowered : []u8 = allocator.alloc(u8,str.len) catch unreachable;
-    for(str,0..)|char,index|{
-        lowered[index] = std.ascii.toUpper(char);
+//returns label info, only valid if is_label is true
+fn check_label(line: []const u8) struct { name_index : u32, is_label : bool, is_breakpoint : bool } {
+    var label_index = std.mem.indexOf(u8, line, ":") orelse return .{ .name_index = 0, .is_label = false, .is_breakpoint = false };
+    var split = std.mem.splitSequence(u8,line," \t");
+    return .{
+        .name_index = @intCast(label_index),
+        .is_label = true,
+        .is_breakpoint = split.first()[0] == '*',
+    };
+}
+
+fn build_breakpoints(allocator: std.mem.Allocator,instructions : []instruction)!struct {indexes : std.ArrayList(u7), lines : std.ArrayList(c_int)}{
+
+    var breakpoint_indexes = std.ArrayList(u7).init(allocator);
+    var breakpoint_lines = std.ArrayList(c_int).init(allocator);
+
+    for(instructions) |ins|{
+        if (ins.is_breakpoint){
+            try breakpoint_indexes.append(ins.index);
+            try breakpoint_lines.append(@intCast(ins.original_line));
+        }
     }
-    return lowered;
+
+    return .{
+        .indexes = breakpoint_indexes,
+        .lines = breakpoint_lines,
+    };
 }
 
-test "test lowercase"{
-    var testeacion = "JaJaJaaaAAAajasdoijAAAaAaaAAaaAaAaAaa";
-    try expect(std.mem.eql(u8,toUpper(testeacion,std.heap.page_allocator),"JAJAJAAAAAAAJASDOIJAAAAAAAAAAAAAAAAAA"));
+fn build_program(allocator : std.mem.Allocator ,instructions : []instruction)![128]u16{
+    _ = allocator;
+    
+    var program : [128]u16 = [_]u16{0}**128;
+    var i : usize = 0;
+
+    for (instructions) |ins| {
+        program[i] =  ins.data;
+        i += 1;
+    }
+    return program;
 }
 
-pub const assembler = struct{
-    program : []const u8,
-    arena : *std.heap.ArenaAllocator,
-    instructions : std.ArrayList(instruction),
-    labels : std.StringHashMap(instruction),
+pub fn assemble_program(program: []const u8, allocator: std.mem.Allocator) !assembler_result {
+    var instructions = try std.ArrayList(instruction).initCapacity(allocator,128); //its important to init with 128 so we dont reallocate memory
+    errdefer instructions.deinit();
+
+    var labels = std.StringHashMap(*instruction).init(allocator);
+    errdefer labels.deinit();
+    var lines = std.mem.splitScalar(u8, program, '\n');
+
+    try first_pass(&lines, &instructions, &labels);
+    try second_pass(instructions.items,labels);
+
+    var breakpoint_info = try build_breakpoints(allocator,instructions.items);
+    errdefer breakpoint_info.indexes.deinit();
+    errdefer breakpoint_info.lines.deinit();
+
+    var build = try build_program(allocator,instructions.items);
+
+    return .{
+        .allocator = allocator,
+        .instructions = instructions,
+        .labels = labels,
+        .breakpoint_indexes = breakpoint_info.indexes,
+        .breakpoint_lines = breakpoint_info.lines,
+        .program = build,
+    };
+}
+
+fn first_pass(lines: *std.mem.SplitIterator(u8,.scalar), instructions: *std.ArrayList(instruction), labels: *std.StringHashMap(*instruction)) !void {
+    var line_number : usize = 1;
+    var index : u7 = 0;
+
+    while (lines.next()) |line| : (line_number += 1) {
 
     
-    //arena must be initialized 
-    pub fn init(program : [:0]const u8, arena: *std.heap.ArenaAllocator)assembler{
+        var words = std.mem.tokenize(u8, line, " ");
+        
+        var first_word = words.peek() orelse continue; //on empty line continue
 
-        return .{
-            .program = toUpper(program,arena.allocator()),
-            .arena = arena,
-            .labels = std.StringHashMap(instruction).init(arena.allocator()),
-            .instructions = std.ArrayList(instruction).init(arena.allocator()),
+        if(first_word[0] == ';'){
+            //comment
+            continue;
+        }
+
+        var name :?[] const u8 = null; //set name (or not)
+
+        var label_info = check_label(line);
+        if (label_info.is_label) {
+            if(label_info.is_breakpoint){
+            //ignore '*'
+                name = std.mem.trim(u8, line[1..label_info.name_index], " ");
+            }else{
+                name = std.mem.trim(u8, line[0..label_info.name_index], " ");
+            }
+
+            //add to hashmap
+            var status = try labels.getOrPut(name.?);
+            if (status.found_existing) {
+                var original = labels.get(name.?).?;
+                logger.err("Redefinición de la etiqueta {s} en la linea {}, definida originalmente en la línea {}",
+                    .{ name.?, line_number, original.original_line});
+                return error.LabelAlreadyExists;
+            }
+        }
+        //first pass we dont assemble anything
+        var current: instruction = .{
+            .index = index,
+            .data = undefined,
+            .name = name,
+            .is_data = undefined,
+            .original_text = line,
+            .original_line = line_number,
+            .is_breakpoint = label_info.is_breakpoint,
+        };
+        try instructions.append(current);
+        
+        if (name)|n|{
+            try labels.put(n,&instructions.items[instructions.items.len-1]);
+        }
+
+        index += 1;
+    }
+}
+
+fn second_pass(instructions: []instruction, labels: std.StringHashMap(*instruction)) !void {
+    
+    for (instructions) |*current| {
+        var text = current.original_text;
+        if(current.is_breakpoint){
+            //messes up calculations with name length
+            text = std.mem.trim(u8,text,"*");
+        }
+
+        if (current.name) |name| {            
+            text = text[name.len..text.len];
+        }
+        
+        text = std.mem.trim(u8,text," :");
+
+        if (is_number(text)){
+            current.is_data = true;
+            current.data = try std.fmt.parseInt(u16,text,0);
+        }else{
+            current.data = try assemble_instruction(text,current.original_line,labels);
+            current.is_data = false;
+        }
+    }
+}
+
+fn get_opcode(operation:[]const u8,line_number:usize) !u2 {
+    inline for (@typeInfo(components.MS_OPCODE).Enum.fields) |tag|{
+        if (std.mem.eql(u8,operation,tag.name)){
+            return tag.value;
+        }
+    }
+    logger.err("OPCODE no válido encontrado: {s} en línea {} ", .{operation,line_number});
+    return error.InvalidOperation;
+}
+
+fn get_operand(op:[]const u8,line_number:usize,labels: std.StringHashMap(*instruction)) !u7 {
+    if(is_number(op)){
+        return std.fmt.parseInt(u7, op,0) catch |err| switch (err) {
+            error.Overflow => {logger.err("Error en la línea {}, el operando {s} es mayor que el rango posible para un u7",.{line_number,op});return error.Overflow;},
+            error.InvalidCharacter => {logger.err("Error en la línea {}, carácter inválido al parsear un numero ({s})",.{line_number,op});return error.InvalidCharacter;},
         };
     }
-
-
-
-    //matches an instruction to its value
-    fn match_opcode(str:[]const u8)!u2{
-        //they are aligned with MS_OPCODE values 
-        var opcodes=[_][:0]const u8{"ADD","CMP","MOV","BEQ"};
-
-        for(opcodes,0..) |opcode,index|{
-            if(std.mem.eql(u8,str,opcode)){
-                return @truncate(u2,index);
-            }
-
-    }
-    return error.invalidOperation;
-    }
-
-    //gets direction from string
-    fn match_direction(self:*assembler,str:[]const u8)!u7{
-
-        if(is_number(str)){
-            var num = try std.fmt.parseInt(u7,str,0);
-            return num;
-        }
-
-        //resolve label
-        var lbl = self.labels.get(str) orelse return error.LabelDoesNotExist;
-
-        logger.debug("Resolved label {s} to direction {}\n",.{str,lbl.index});
-        return lbl.index;
-    }
-
-    fn parse_normal_instruction(self:*assembler,word0: []const u8, word1:[]const u8, word2:[]const u8)!u16{
-        const op = try match_opcode(word0);
-        const dir1 = try self.match_direction(word1);
-        const dir2 = try self.match_direction(word2);
-        logger.debug("{s},{s},{s} = {},{},{} aka. {X}\n",.{
-            word0,word1,word2,
-            op,dir1,dir2,
-            @as(u16,op)<<14 | @as(u16,dir1)<<7 | dir2});
-        
-        return @as(u16,op)<<14 | @as(u16,dir1)<<7 | dir2;
-    }
-
-    fn parse_jump_instruction(self:*assembler,word0: []const u8, word1:[]const u8)!u16{
-        return self.parse_normal_instruction(word0,"0",word1);
-    }
-
-
-
-    // does not assemble labels on its own, you should call assemble_program 
-    pub fn assemble_line(self:*assembler,line:[]const u8)! struct{is_data:bool,data:u16} {
-
-        const trimmed = std.mem.trim(u8,line," \n\t");
-        var words = std.mem.split(u8,trimmed," ");
-        const first = words.first();
-
-        if(is_number(first)){
-            try assert_no_more_tokens(&words);
-            return .{.is_data = true,.data = try std.fmt.parseInt(u16,first,0)};
-        }
-
-        if (std.mem.eql(u8,first,"BEQ")){
-            var dir1 = next_token(&words) orelse return error.NotEnoughOperands;
-            try assert_no_more_tokens(&words);
-            return .{.is_data = false, .data = try self.parse_jump_instruction(first,dir1)};
-        }
-
-        var dir1 = next_token(&words) orelse return error.NotEnoughOperands;
-        var dir2 = next_token(&words) orelse return error.NotEnoughOperands;
-        try assert_no_more_tokens(&words);
-        return .{.is_data = false, .data = try self.parse_normal_instruction(first,dir1,dir2)};
-
-    }
-
-    //iterates over all lines and assembles all the labels
-    fn assemble_all_labels(self:*assembler,lines: *std.mem.SplitIterator(u8))!void{
-
-
-        var indexes = std.AutoHashMap(usize,instruction).init(self.arena.allocator()); // array to find labels faster
-        defer indexes.deinit();
-
-        var line_number:usize = 1;
-        var index:u7=0;
-        lines.reset();
-        while(lines.next())  |line| : (line_number+=1){
-
-            if(std.mem.trim(u8,line," \n\t").len==0 or line[0]==';'){
-                continue;
-            }
-            //an empty line does not count as an instruction,and does not increment the index, anything alse does
-            defer index+=1;
-            if(!is_label(line)){
-                continue;
-            }
-
-            var trimmed = std.mem.trim(u8,line," ");
-            var words = std.mem.split(u8,trimmed," ");
-            var first =words.first();
-            var label =instruction{
-                    .data=undefined, //is defined in the next loop of this function
-                    .name=line[1..first.len],
-                    .index=index,
-                    .is_data=undefined, //is defined in the next loop of this function
-                    .original_text=line,
-                    .original_line=line_number,
-            };
-
-
-            logger.debug("found label {s} on line {} {s}\n",.{label.name.?,line_number,line});
-            //put without clobbering data
-            var value = self.labels.getOrPut(label.name.?) catch unreachable;
-            if(!value.found_existing){
-                value.value_ptr.* = label;
-                indexes.put(line_number,label) catch unreachable;
-            }else{
-                logger.err("Error en línea {}: Redefinición de la etiqueta {s}\n",.{line_number,label.name.?});
-                return error.LabelRedefinition;
-            }
-
-        }
-
-
-        //we dont put data in them as we go because forward references, we put it all at the end
-        lines.reset();
-
-        index=0;
-        line_number=1;
-
-
-        while(lines.next())|line| :(line_number+=1){
-            logger.debug("[{}] - {s}\n",.{index,line});
-            var label = indexes.get(line_number) orelse continue;
-
-            logger.debug("trying to assemble label {s} on line {s}\n",.{label.name.?,line});
-            var  result = self.assemble_line(line[label.name.?.len+1..line.len]) catch |err| switch(err){
-                error.InvalidCharacter  =>{logger.err("Error en la línea {}: Carácter inválido",.{line_number}); return err;},
-                error.Overflow          =>{logger.err("Error en la línea {}, Overflow",.{line_number}); return err;},
-                error.NotEnoughOperands =>{logger.err("Error en la línea {}, faltan operandos",.{line_number}); return err;},
-                error.TooManyWords      =>{logger.err("Error en la línea {}, demasiados operandos",.{line_number}); return err;},
-                error.invalidOperation  =>{logger.err("Error en la línea {}, operación inválida",.{line_number}); return err;},
-                error.LabelDoesNotExist =>{logger.err("Error en la línea {}, no existe la etiqueta referenciada",.{line_number});return err;},
-            };
-            //only update index when instruction is actually found
-            index+=1;
-            label.data = result.data;
-            label.is_data = result.is_data;
-            self.labels.put(label.name.?,label) catch unreachable; //we're clobbering existing labels with new ones
-            self.instructions.append(label) catch unreachable;
-        }
-        
-    }
-
-    // reads program and creates list of instructions + labels, also resolves label references
-    // returns list of instructions which needs to be ordered by indices using .build()
-    pub fn assemble_program(self:*assembler)!std.ArrayList(instruction){
-        
-        var index:u7=0;
-        var line_number:usize = 1;
-        var lines = std.mem.split(u8,self.program,"\n");
-
-        try self.assemble_all_labels(&lines);
-
-
-        lines.reset();
-        while(lines.next()) |line| : (line_number+=1){
-
-            if(std.mem.trim(u8,line," \n\t").len==0 or line[0]==';')
-                continue;
-            
-            defer index+=1;
-            if(is_label(line))
-                continue;
-            logger.debug("ensambleando línea :{} con texto {s}", .{line_number,line});
-
-            var result =  self.assemble_line(line) catch |err| switch(err){
-                error.TooManyWords =>{logger.err("Error en línea {}: Demasiadas palabras en una línea\n",.{line_number}); return err;},
-                error.InvalidCharacter =>{logger.err("Error en línea {}: Carácter inválido\n",.{line_number}); return err;},
-                error.Overflow =>{logger.err("Error en línea {}: Overflow\n",.{line_number}); return err;},
-                error.NotEnoughOperands =>{logger.err("Error en línea {}: Faltan operandos\n",.{line_number}); return err;},
-                error.invalidOperation =>{logger.err("Error en línea {}: Operación inválida\n",.{line_number}); return err;},
-                error.LabelDoesNotExist =>{logger.err("Error en línea {}: No existe la etiqueta referenciada\n",.{line_number}); return err;},
-
-                //error.NotImplemented =>{logger.err("Error en línea {}: Característica no implementada",.{index}); return err;},
-            };
-
-            self.instructions.append(
-                .{
-                    .name=null,
-                    .data=result.data,
-                    .is_data=result.is_data,
-                    .index=index,
-                    .original_text=line,
-                    .original_line=line_number,
-                })
-                catch |err| switch(err){
-                    error.OutOfMemory => {logger.err("Error en la línea {}: No hay suficiente memoria\n",.{index});unreachable;},
-                };
-        }
-        return self.instructions;
-    }
-
-    //builds program from assembled instructions + indices 
-    pub fn build(self:*assembler)[]u16{
-        var program = self.arena.allocator().alloc(u16,self.instructions.items.len) catch unreachable;
-        // we assume only one instruction points to each index,
-        // if this is not true something has gone very wrong
-        
-        for(self.instructions.items) |line|{
-            logger.debug("Building instruction {} with data {X}\n",.{line.index,line.data});
-            program[line.index]= line.data;
-
-        }
-        //TODO: DEALLOCATE THIS SHIT
-        return program;
-    }
-    
-    //gets all labels that start with some character from a list of labels
-    pub fn get_breakpoints(self:*assembler)std.ArrayList(c_int){
-    var breaks = std.ArrayList(c_int).init(self.arena.allocator());
-    for (self.instructions.items)|ins|{
-        var name = ins.name orelse continue;
-        if(name[0] == '*'){ //TODO: extract constant
-            breaks.append(@intCast(c_int,ins.original_line)) catch unreachable;
-        }
-    }
-    return breaks;
+    var label = labels.get(op) orelse {logger.err("No se encuentra la etiqueta {s} referenciada en la línea {}", .{op,line_number});return error.LabelDoesNotExist;};
+    return label.index;
 }
 
-};
+fn assemble_instruction(line: []const u8,line_number:usize,labels: std.StringHashMap(*instruction)) !u16 {
+    var words = std.mem.tokenize(u8, line, " "); //we also want to remove ':' from this
 
-test "test assembler"{
+    logger.debug("ensamblando línea {s}\n", .{line});
+    var opcode:u2 = try get_opcode(words.next().?, line_number);
+    
+    var dir1 : u7 = 0;
+    if (opcode != @intFromEnum(components.MS_OPCODE.BEQ)) {
+        dir1 = try get_operand(words.next() orelse {logger.err("Error en línea {}, faltan operandos\n", .{line_number});return error.NotEnoughOperands;},line_number,labels);
+    }
+    var dir2 : u7 = try get_operand(words.next() orelse {logger.err("Error en línea {}, faltan operandos\n", .{line_number});return error.NotEnoughOperands;},line_number,labels);
+
+    if(words.next() != null){
+        return error.TooManyTokens;
+    }
+
+    return @as(u16,opcode)<<14 | @as(u16,dir1)<<7 | dir2;
+}
+
+test "basic instructions" {
      const test_str =
-     \\ MOV 0X10 0X20
-     \\ ADD 0X30 0X40
+     \\ MOV 0x10 0x20
+     \\ ADD 0x30 0x40
      \\ CMP 0X50 0X60
      \\ BEQ 0X70
- ;
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var ensamblacion :assembler = assembler.init(test_str,&arena);
-    _= try ensamblacion.assemble_program();
-    
-    const expected = [_]u16{0x8820,0x1840,0x6860,0xc070};
-    for(ensamblacion.build(),0..)|line,index|{
-        try expect(line==expected[index]);
-    }
-    arena.deinit();
-}
-
-test "test labels"{
-    const test_recognition =
-    \\:cosa 0xcaca
-    \\:cosa1 MOV 0 1
-;
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var ens = assembler.init(test_recognition,&arena);
-    _=try ens.assemble_program();
-    _=ens.build();
-
-    //program gets capitalized
-    //TODO:UPDATE THESE TESTS
-    //try expect(ens.labels.get("COSA").?.data==0xcaca);
-    //try expect(ens.labels.get("COSA1").?.data == ens.assemble_line("MOV 0 1") catch unreachable);
-
-    arena.deinit();
-
-
-    const test_resolving =
-    \\:num1 0xcaca
-    \\:num2 0xbebe
-    \\:tmp 0
-    \\MOV num1 tmp
-    \\MOV num2 num1
-    \\MOV tmp num2
     ;
-    //last arena gets deinited with the assembler
-    var arena2 = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var assemble = assembler.init(test_resolving,&arena2);
-    _=try assemble.assemble_program();
-    var program = assemble.build();
-    _ = program;
+    var result = try assemble_program(test_str,std.testing.allocator);
+    defer result.deinit();
 
-    //TODO:UPDATE THESE TESTS
-    //try expect(program[3] == try assemble.assemble_line("MOV 0 2").data);
-    //try expect(program[4] == try assemble.assemble_line("MOV 1 0").data);
-    //try expect(program[5] == try assemble.assemble_line("MOV 2 1").data);
+    var expected = [_]u16{0x8820,0x1840,0x6860,0xc070};
 
+    for(0..4) |i|{
+        try expect(result.program[i] == expected[i]);
+    } 
 }
 
+test "test errors"{
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var alloc = arena.allocator();
+
+    try std.testing.expectError(error.TooManyTokens,assemble_program("MOV 1 2 3 4 5 6 7",alloc));
+    try std.testing.expectError(error.NotEnoughOperands,assemble_program("MOV 1",alloc));
+    try std.testing.expectError(error.InvalidOperation,assemble_program("PITO 1 2",alloc));
+    try std.testing.expectError(error.Overflow,assemble_program("MOV 0xFFFFF 0xcaca",alloc));
+    try std.testing.expectError(error.LabelDoesNotExist,assemble_program("MOV 0 num1",alloc));
+}
 
 test "distance betweeen two numbers"{
         const program =
@@ -378,7 +274,7 @@ test "distance betweeen two numbers"{
     \\MOV zero j
     \\MOV zero res
 
-    \\:find_min CMP i num1
+    \\find_min : CMP i num1
     \\BEQ min_n1
     \\CMP i num2
     \\BEQ min_n2
@@ -386,63 +282,64 @@ test "distance betweeen two numbers"{
     \\CMP zero zero
     \\BEQ find_min
 
-    \\:min_n1 MOV num1 min
+    \\min_n1 : MOV num1 min
     \\MOV num2 max
     \\CMP zero zero
     \\BEQ distance
 
-    \\:min_n2 MOV num2 min
+    \\min_n2 : MOV num2 min
     \\MOV num1 max
 
-    \\:distance ADD one i
+    \\distance : ADD one i
     \\ADD one j
     \\CMP i max
     \\BEQ found
     \\CMP zero zero
     \\BEQ distance
-    \\:found MOV j res
+    \\*found : MOV j res
 
-    \\:num2 0x0000
-    \\:num1 0x0000
-    \\:i 0x0000
-    \\:j 0x0000
-    \\:zero 0x0000
-    \\:one 0x0001
-    \\:min 0x0000
-    \\:max 0x0000
-    \\:res 0x0000
+    \\num2 : 0x0000
+    \\num1 : 0x0000
+    \\i : 0x0000
+    \\j : 0x0000
+    \\zero : 0x0000
+    \\one : 0x0001
+    \\min : 0x0000
+    \\max : 0x0000
+    \\res : 0x0000
     ;
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var assemble = assembler.init(program,&arena);
-    _=try assemble.assemble_program();
-    _= assemble.build();
-
-    //we just test for no errors when assembling
+    
+    var results = try assemble_program(program,std.testing.allocator);
+    defer results.deinit();
 }
 
-test "test errors"{
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+test "test labels"{
+    const test_recognition =
+    \\cosa : 0xcaca
+    \\cosa1 : MOV 0 1
+;
 
-        
-        var assemble = assembler.init("MOV 1 2 3 4 5 6 7",&arena);
-        try std.testing.expectError(error.TooManyWords,assemble.assemble_program());
-        _= assemble.build();
+    var alloc = std.testing.allocator;
 
+    var results = try assemble_program(test_recognition,alloc);
+    defer results.deinit();
 
-       assemble = assembler.init("MOV 1",&arena);
-       try std.testing.expectError(error.NotEnoughOperands,assemble.assemble_program());
-       _= assemble.build();
+    try expect(results.labels.get("cosa").?.data == 0xcaca);
+    try expect(results.labels.get("cosa").?.is_data == true);
+    try expect(results.labels.get("cosa1").?.index == 1);
+    try expect(results.labels.get("cosa1").?.is_breakpoint == false);
+    try expect(results.labels.get("cosa1").?.is_data == false);
 
-       assemble = assembler.init("PITO 1 2",&arena);
-       try std.testing.expectError(error.invalidOperation,assemble.assemble_program());
-       _= assemble.build();
+    
+    const test_resolving =
+    \\num1 : 0xcaca
+    \\num2 : 0xbebe
+    \\tmp : 0
+    \\MOV num1 tmp
+    \\MOV num2 num1
+    \\MOV tmp num2
+    ;
 
-       assemble = assembler.init("MOV 0xFFFFF 0xcaca",&arena);
-       try std.testing.expectError(error.Overflow,assemble.assemble_program());
-       _= assemble.build();
-
-       assemble = assembler.init("MOV 0 num1",&arena);
-       try std.testing.expectError(error.LabelDoesNotExist,assemble.assemble_program());
-       _= assemble.build();
-
+    var assemble = try assemble_program(test_resolving,alloc);
+    defer assemble.deinit();
 }

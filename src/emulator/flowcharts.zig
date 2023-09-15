@@ -1,265 +1,119 @@
-const std = @import("std");
+const is_native = @import("../main.zig").is_native;
+
+const template = if (is_native) @embedFile("./flowchart-template-native.html") else @embedFile("./flowchart-template-web.html");
+const std = @import("std"); 
 const assembler = @import("./assembler.zig");
-const decode_instruction =@import("./components.zig").decode_instruction;
-const instruction = assembler.instruction;
-const toUpper = assembler.toUpper;
-const logger = std.log.scoped(.assembler);
-const OPCODE =@import("./components.zig").MS_OPCODE;
-const template = @import("./flowchart_template.html.zig").template;
-
-
-const DiagramNode = struct{
-    own:instruction,
-    next:?*DiagramNode,
-    //alternate only exists for jumps
-    alternate:?u7=null,
-
-};
-
-
-const Diagram = struct{
-    arena:std.heap.ArenaAllocator,
-    head:*DiagramNode,
-    tail:*DiagramNode,
-    cursor:*DiagramNode,
-    has_elements:bool=false,
-
-
-    pub fn init(arena:std.heap.ArenaAllocator)Diagram{
-        return .{
-            .arena=arena,
-            .head=undefined,
-            .tail=undefined,
-            .cursor=undefined,
-        };
-    }
-
-    //add to tail
-    pub fn push(self:*Diagram,own:instruction,alternate:?u7)void{
-        var node = self.arena.allocator().create(DiagramNode) catch unreachable;
-        node.own=own;
-        node.alternate=alternate;
-        node.next=null;
-
-        if(!self.has_elements){
-            //first push
-            self.head = node;
-            self.tail = self.head;
-            self.cursor = self.head;
-            self.has_elements=true;
-        }else{
-            self.cursor.next=node;
-            self.cursor=self.cursor.next orelse unreachable;
-        }
-    }
-
-    pub fn reset(self:*Diagram)void{
-        self.cursor=self.head;
-    }
-
-    pub fn next(self:*Diagram)?*DiagramNode{
-        self.cursor = self.cursor.next orelse return null;
-        return self.cursor;
-    }
-
-    pub fn debugPrint(self:Diagram)void{
-        //we create our own cursor because we dont want to modify the structure's internal state
-
-        var cursor:*DiagramNode = self.head;
-        var i:usize=0;
-        while(true): (i+=1) {
-            
-            if (cursor.alternate == null){
-
-                std.debug.print("Elemento {}:label({s}) {s}\n",
-                .{i+1,cursor.own.name orelse "",cursor.own.original_text});
-            }else{
-
-                std.debug.print("Elemento {}:label({s}) {s}, alternativo: {}\n",
-                .{i+1,cursor.own.name orelse "",cursor.own.original_text,cursor.alternate.?});
-            }
-
-            cursor=cursor.next orelse break;
-        }
-
-    }
-};
+const decode_instruction = @import("./components.zig").decode_instruction;
+const MS_OPCODE = @import("./components.zig").MS_OPCODE;
+const logger = std.log.scoped(.flowcharts);
 
 
 
-fn cmpByIndex(context: void, a: instruction, b: instruction) bool {
-    _ = context;
-    return a.index<b.index;
-}
 
-fn getCMPText(alloc:std.mem.Allocator,ins : instruction)![]const u8{
+fn getCMPText(alloc:std.mem.Allocator,ins : assembler.instruction)![]const u8{
     var words = std.mem.tokenize(u8,ins.original_text," ");
-
-
-    std.debug.assert(std.mem.eql(u8,words.next().?,"CMP") or std.mem.eql(u8,words.next().?,"CMP"));
+    std.debug.assert(std.mem.eql(u8,words.next().?,"CMP") or std.mem.eql(u8,words.next().?,"CMP") or std.mem.eql(u8,words.next().?,"CMP"));
 
     return  try std.fmt.allocPrint(alloc,"{s} = {s}", .{words.next().?,words.next().?});
 }
 
 
+pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.assembler_result)![]const u8{
 
-pub fn buildDiagram(alloc:std.mem.Allocator,instructions:[]instruction)!Diagram{
-    var arena = std.heap.ArenaAllocator.init(alloc);
+    var alloc = arena.allocator();
+    var result = std.ArrayList(u8).init(alloc);
+    var i : u7 = 0;
+    var instructions :[]assembler.instruction = assembly.instructions.items; 
 
-    var diagram = Diagram.init(arena);
-    diagram.push(.{.index=std.math.maxInt(u7),.data=0,.original_text="sentinel node",.name=null,.is_data=false,.original_line=0},null);
+    while(i < instructions.len) : (i+=1){
 
-    std.sort.sort(instruction,instructions,{},cmpByIndex);
-
-    var i:usize=0;
-    while(i<instructions.len) : (i+=1){
-        //we dont care about data
-        if (instructions[i].is_data)
+        if(instructions[i].is_data){
             continue;
-        
-        var op1 : u7 = 0;
-        var op2 : u7 = 0;
-        var opcode:OPCODE =OPCODE.ADD;
-        decode_instruction(instructions[i].data,&opcode,&op1,&op2);
-        
-        switch(opcode){
-            .ADD,.MOV, =>
-            {
-                diagram.push(instructions[i],null);
-            },
-            .CMP =>
-            {
-                //adding cmp
-                diagram.push(instructions[i],null);
-                i+=1;
-                //adding beq
-                decode_instruction(instructions[i].data,&opcode,&op1,&op2);
-
-                if(opcode != .BEQ){
-                    logger.err("se ha encontrado una instrucción distina a un BEQ después de un CMP en la línea \"{s}\",esto no está soportado",
-                           .{instructions[i].original_text});
-                    return error.WrongProgramStructure;
-                }
-                diagram.push(instructions[i],op2);
-            },
-
-            .BEQ =>
-            {
-                logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea \"{s}\", esto no está soportado",
-                        .{instructions[i].original_text});
-                return error.WrongProgramStructure;
-            }
         }
-    }
-    return diagram;
-}
+        
+        var ins_data = decode_instruction(instructions[i].data);
+        
+        var text :[]const u8 = undefined;
+        switch (ins_data.op) {
+            .ADD,.MOV => {
+                var next_data = decode_instruction(instructions[i+1].data);
+                if(next_data.op  == .CMP){
 
-
-pub fn diagramToMermaid(alloc:std.mem.Allocator, diagram :*Diagram)![]const u8{
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    var mermaid = std.ArrayList([]const u8).init(arena.allocator());
-    //list of strings
-
-    diagram.reset();
-    while(diagram.next())|node|{
-
-
-
-        var op1 : u7 = 0;
-        var op2 : u7 = 0;
-        var opcode:OPCODE =OPCODE.ADD;
-        decode_instruction(node.own.data,&opcode,&op1,&op2);
-
-        switch(opcode){
-
-            .ADD , .MOV =>
-            {
-                var next_index:isize=undefined;
-                if(node.next != null){
-                    next_index = node.next.?.own.index; 
+                    if(next_data.dir1 == next_data.dir2){
+                        //next is unconditional jump
+                        text = try std.fmt.allocPrint(alloc,"{}[{s}]\n",.{i,instructions[i].original_text});
+                    }else{
+                        text = try std.fmt.allocPrint(alloc,"{}[{s}] --> {}\n",.{i,instructions[i].original_text,i+3});
+                    }
+                }else{
+                    text = try std.fmt.allocPrint(alloc,"{}[{s}] --> {}\n",.{i,instructions[i].original_text,i+1});
                 }
-                else{
-                    next_index = -1;
-                }
-                
-                var text = try std.fmt.allocPrint(arena.allocator(),"{}[{s}] --> {}\n",
-                .{node.own.index,node.own.original_text,next_index});
-                try mermaid.append(text);
             },
 
-            .CMP =>
-            {
-                const format = 
-                \\{}{{ {s} }} -->|Sí|{}
-                \\{} -->|No|{}
-                \\
-                ;
-
-                const next = diagram.next() orelse {
-                    logger.err("Se ha encontrado un CMP sin ninguna instrucción despues en la linea {s}",.{node.own.original_text});
-                    return error.WrongProgramStructure;
+            .CMP => {
+                var lbl_name = blk : {
+                if(instructions[i].name)|n|{
+                    break :blk try std.mem.concat(alloc,u8,&[_][]const u8{n," : "});
+                }
+                    break :blk "";
                 };
 
-                var cmp_text = try getCMPText(arena.allocator(),node.own);
-                var next_op1 : u7 = 0;
-                var next_op2 : u7 = 0;
-                var next_opcode:OPCODE =OPCODE.ADD;
-                decode_instruction(next.own.data,&next_opcode,&next_op1,&next_op2);
-
-               if(next_opcode != .BEQ){
-                    logger.err("se ha encontrado una instrucción distina a un BEQ después de un CMP en la línea \"{s}\",esto no está soportado",
-                           .{next.own.original_text});
-                    return error.WrongProgramStructure;
+                if (i+1 > instructions.len){
+                    logger.err("Se ha encontrado un CMP sin ninguna instrucción despues en la linea {}",.{instructions[i].original_line});
+                    return error.BadlyFormed;
                 }
 
-                var text:[]u8 = undefined;
-                //always jump
-                if(op1==op2){
-                    //format if both arguments are equal(always true)
-                    const alternate_format =
-                    \\ {}{{Saltar}}-->{}
-                    \\
-                    ;
-                    text = try std.fmt.allocPrint(arena.allocator(),alternate_format,
-                        .{node.own.index,next.alternate.?});
+                var jump_data = decode_instruction(instructions[i+1].data);
+                
+                if(jump_data.op != .BEQ) {
+                    logger.err("Se ha encontrado una instrucción distinta de beq después de un cmp en la línea {}, esto no está soportado", .{instructions[i+1].original_line});
+                    return error.BadlyFormed;
+                }
+
+
+                if(ins_data.dir1 == ins_data.dir2){
+                    //always jump
+                    // last_instruction --> jump_destination
+                    text = try std.fmt.allocPrint(alloc,"{} --> {}\n",.{i-1,jump_data.dir2});
+                    i+=1; //skip the beq
                 }else{
-                    text = try std.fmt.allocPrint(arena.allocator(),format,
-                    .{node.own.index,cmp_text,next.alternate.?,
-                            node.own.index,next.next.?.own.index});
-                }
-            try mermaid.append(text);
+                    var cmp_info = try getCMPText(alloc, instructions[i]);
+                    var no_index = blk : {
+                        var next_data = decode_instruction(instructions[i+2].data);
+                        if(next_data.op  == .CMP and next_data.dir1 == next_data.dir2){
+                            //unconditional jump after conditional jump
+                            //we need to create a special case for this because unconditional jumps dont create new nodes so we would not have any index to jump to
+                            var next_jump_data = decode_instruction(instructions[i+3].data);
+                            i+=3; //skip all this instructions
+                            break :blk next_jump_data.dir2;
+                        }
+                        i+=1;
+                        break :blk i+1; // else continue normally
+                    };
+
+                    text = try std.fmt.allocPrint(alloc, "{}{{{s}{s}}} -->|Sí|{}\n{} -->|No| {}\n",
+                                .{i-1,lbl_name,cmp_info,jump_data.dir2,
+                                i-1,no_index});
+                }                
             },
-
-
-            .BEQ => {logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea \"{s}\", esto no está soportado",.{node.own.original_text});},
+            .BEQ => {logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea {}, esto no está soportado",.{instructions[i].original_line});},
         }
+        try result.appendSlice(text);
     }
-    return std.mem.concat(arena.allocator(),u8,mermaid.items);
-
+    _ = result.pop();//remove last newline
+    try result.appendSlice(try std.fmt.allocPrint(alloc,"[FIN]\n",.{}));
+    return std.fmt.allocPrint(alloc,template,.{result.items}); // we dont need to worry about deallocation because of the arena
 }
 
-pub fn createDiagramFile(arena:*std.heap.ArenaAllocator,program:[:0]const u8,path:[]const u8)!void{
 
 
-    var ass = assembler.assembler.init(program,arena);
-    var instructions = try ass.assemble_program();
-
-    var diagram = try buildDiagram(arena.allocator(),instructions.items);
-
-    const mermaid =try diagramToMermaid(arena.allocator(),&diagram);
-    
-    var outfile = try std.fs.cwd().createFile(path, .{ .read = true });
-    defer outfile.close();
-    _ = try outfile.write(try std.fmt.allocPrint(arena.allocator(),template, .{mermaid}));    
-}
-
-test "test crear linked list"{
+test "test diagrama"{
     const program =
     \\MOV zero i
     \\MOV zero j
     \\MOV zero res
 
-    \\:find_min CMP i num1
+    \\find_min : CMP i num1
     \\BEQ min_n1
     \\CMP i num2
     \\BEQ min_n2
@@ -267,36 +121,37 @@ test "test crear linked list"{
     \\CMP zero zero
     \\BEQ find_min
 
-    \\:min_n1 MOV num1 min
+    \\min_n1 : MOV num1 min
     \\MOV num2 max
     \\CMP zero zero
     \\BEQ distance
 
-    \\:min_n2 MOV num2 min
+    \\min_n2 : MOV num2 min
     \\MOV num1 max
 
-    \\:distance ADD one i
+    \\distance : ADD one i
     \\ADD one j
     \\CMP i max
     \\BEQ found
     \\CMP zero zero
     \\BEQ distance
-    \\:found MOV j res
+    \\found : MOV j res
 
-    \\:num2 0x0000
-    \\:num1 0x0000
-    \\:i 0x0000
-    \\:j 0x0000
-    \\:zero 0x0000
-    \\:one 0x0001
-    \\:min 0x0000
-    \\:max 0x0000
-    \\:res 0x0000
+    \\num2 : 0x0000
+    \\num1 : 0x0000
+    \\i : 0x0000
+    \\j : 0x0000
+    \\zero : 0x0000
+    \\one : 0x0001
+    \\min : 0x0000
+    \\max : 0x0000
+    \\res : 0x0000
     ;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    
-    try createDiagramFile(&arena, program,"./test_diagram.html");
 
-    
+    var assembler_results = try assembler.assemble_program(program,std.testing.allocator);
+    defer assembler_results.deinit();
+
+    _ = try buildFlowchart(&arena,assembler_results);   
 }

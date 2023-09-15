@@ -1,0 +1,32 @@
+<html>
+  <body>
+    Diagrama generado a partir del código ensamblador:
+    <pre class="mermaid">
+flowchart TD;
+0[MOV zero i] --> 1
+1[MOV zero j] --> 2
+2[MOV zero res] --> 5
+3{find_min : i = num1} -->|Sí|10
+3 -->|No| 5
+5{i = num2} -->|Sí|14
+5 -->|No| 7
+7[ADD one i]
+7 --> 3
+10[min_n1 : MOV num1 min] --> 11
+11[MOV num2 max]
+11 --> 16
+14[min_n2 : MOV num2 min] --> 15
+15[MOV num1 max] --> 16
+16[distance : ADD one i] --> 17
+17[ADD one j] --> 20
+20{i = max} -->|Sí|22
+20 -->|No| 16
+22[*found : MOV j res] --> 23[FIN]
+
+    </pre>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true });
+    </script>
+  </body>
+</html>

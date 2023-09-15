@@ -4,9 +4,6 @@ const assert = std.debug.assert;
 const logger = std.log.scoped(.emulator);
 
 
-
-
-
 // pointers inside structs are used to represent cables connected to the component that struct represents
 // const pointers are inputs, non-const pointers are outputs
 // this has the advantage that we can "connect" the pointers to their respective input and output structs
@@ -215,12 +212,19 @@ test "Test ALU"{
 }
 
 
+fn decode_instruction_internal(data:u16,op:*MS_OPCODE,dir1:*u7,dir2:*u7)void{
+    op.* = @enumFromInt(data>>14);
+    dir1.* = @intCast((data >> 7) & 0x7F);
+    dir2.* = @intCast((data) & 0x7F);
+}
 
+pub fn decode_instruction(data:u16)struct {op : MS_OPCODE,dir1 : u7,dir2 :u7}{
 
-pub fn decode_instruction(data:u16,op:*MS_OPCODE,dir1:*u7,dir2:*u7)void{
-    op.* = @intToEnum(MS_OPCODE,data>>14);
-    dir1.* = @intCast(u7,(data >> 7) & 0x7F);
-    dir2.* = @intCast(u7,(data) & 0x7F);
+    return .{
+        .op = @enumFromInt(data>>14),
+        .dir1 = @intCast((data >> 7) & 0x7F),
+        .dir2 = @intCast((data) & 0x7F),
+    };
 }
 
 pub const RI = struct{
@@ -234,7 +238,7 @@ pub const RI = struct{
 
     pub fn update(self:*RI)void{
         if(self.enable_read.*){
-            decode_instruction(self.data.*,self.op,self.dir1,self.dir2);
+            decode_instruction_internal(self.data.*,self.op,self.dir1,self.dir2);
             //logger.debug("IR - Decoded instruction - data = {X}, op = {}, dir1 = {}, dir2 = {}\n",.{self.data.*,self.op.*,self.dir1.*,self.dir2.*});
         }
         
@@ -245,7 +249,7 @@ test "Test RI"{
 
     //op 2, dir1 = 120, dir2=100
     //todo: make this mess of bitwise operations and casts into a function
-    var data:u16=@as(u16,@enumToInt(MS_OPCODE.BEQ))<<14 | 120<<7 | 100;
+    var data:u16=@as(u16,@intFromEnum(MS_OPCODE.BEQ))<<14 | 120<<7 | 100;
     var enable_read:bool = true;
 
     var op:MS_OPCODE=undefined;
@@ -547,11 +551,10 @@ pub const Maquina = struct{
 
     control_unit :UC,
 
-    allocator : *std.mem.Allocator,
+    allocator : std.mem.Allocator,
 
-    pub fn init(allocator : *std.mem.Allocator)*Maquina{
-        var self:*Maquina = allocator.create(Maquina) catch unreachable;
-
+    pub fn init(allocator : std.mem.Allocator)!*Maquina{
+        var self:*Maquina = try allocator.create(Maquina);
         self.* = Maquina{
             .mux_in_dir1 = 0,
             .mux_in_dir2 = 0,
@@ -687,20 +690,22 @@ pub const Maquina = struct{
             try self.update();
         }
     }
+    pub fn deinit(self: *Maquina)void{
+        self.allocator.destroy(self);
+    }
 };
 
 
 test "Test ejecutar instrucciones"{
-    var alloc =std.heap.page_allocator;
-    var maquina = Maquina.init(&alloc);
-
+    var alloc =std.testing.allocator;
+    var maquina = try Maquina.init(alloc);
+    
     //loading program
+
     //mov 1 2, moves 0xcaca to position 3
     maquina.load_memory(&[_]u16{0x8082,0xcaca,0x0000});
     try maquina.run(2);
     try expect(maquina.system_memory.memory[2]==0xcaca);
-
-
 
     maquina.program_counter.stored_pc.*=0;
     maquina.load_memory(&[_]u16{0x0082,0x0010,0x0020}); //add 1 2
@@ -713,17 +718,11 @@ test "Test ejecutar instrucciones"{
     try maquina.run(2);
     try expect(maquina.control_unit.flag_zero.* == true);
 
-
-
     maquina.program_counter.stored_pc.*=0;
     maquina.load_memory(&[_]u16{0x4082,0x0010,0x0020}); //cmp (false)
     try maquina.run(2);
     try expect(maquina.control_unit.flag_zero.* == false);
     
-
-
-
-
     //cmp result result
     //beq end
     //mov zero result
@@ -736,4 +735,6 @@ test "Test ejecutar instrucciones"{
     maquina.load_memory(&[_]u16{0x4204, 0xc003, 0x8284, 0xc003, 0xcafe, 0}); 
     try maquina.run(4);
     try expect(maquina.system_memory.memory[4]==0xcafe);
+
+    maquina.deinit();
 }

@@ -8,11 +8,8 @@ char* lastText;
 
 
 extern "C"{
-
-
-
-
-    void setupAssemblyEditor(){
+    
+    void setupAssemblyEditor(void){
         editor.SetLanguageDefinition(lang);
         editor.SetBreakpoints(bpts);
         editor.SetPalette(TextEditor::GetDarkPalette());
@@ -20,7 +17,7 @@ extern "C"{
         strncpy(lastText,"",1);
     }
 
-    void drawAssemblyEditor(){
+    void drawAssemblyEditor(void){
         
     auto cpos = editor.GetCursorPosition();
 
@@ -44,7 +41,7 @@ extern "C"{
         }
         editor.SetBreakpoints(bpts);
     }
-    const char* getAssemblyEditorText(){
+    const char* getAssemblyEditorText(void){
         delete [] lastText; 
         std::string text = editor.GetText();
         lastText = new char[text.length()+1];
