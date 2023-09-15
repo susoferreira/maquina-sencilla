@@ -1,0 +1,25 @@
+bucleI : CMP i max
+BEQ fin
+ADD uno i
+CMP cero cero
+BEQ bucleJ
+bucleJ: CMP j max
+BEQ bucleI
+ADD uno j
+CMP cero cero
+BEQ bucleK
+bucleK: CMP k max
+BEQ bucleJ
+ADD uno k
+CMP cero cero
+BEQ bucleK
+*fin: ADD uno uno
+
+cero : 0
+i : 0
+j : 0
+k : 0
+max : 0x0fff
+uno : 1
+
+

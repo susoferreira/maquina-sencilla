@@ -1,0 +1,44 @@
+inicio : MOV menos1 expo
+CMP base uno
+BEQ base1
+bucle1 : CMP n cero
+BEQ fin
+CMP uno uno
+BEQ divide
+seguir : ADD uno expo
+CMP uno uno
+BEQ bucle1
+base1 : MOV uno expo
+*fin : BEQ fin
+divide : MOV cero cont
+MOV cero resto
+MOV cero q
+MOV n divdo
+MOV base divsor
+bucled : CMP cont divdo
+BEQ findiv
+ADD uno resto
+ADD uno cont
+CMP resto divsor
+BEQ qmas1
+CMP uno uno
+BEQ bucled
+qmas1 : ADD uno q
+MOV cero resto
+BEQ bucled
+
+findiv : MOV q n
+BEQ seguir
+
+cero : 0
+uno : 1
+expo : 0xffff
+menos1 : 0xffff
+base : 2
+n : 0x000f
+cont : 0
+resto : 0
+q : 0
+divdo : 0xcafe
+divsor : 0xdead
+

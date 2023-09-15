@@ -96,7 +96,10 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
                                 i-1,no_index});
                 }                
             },
-            .BEQ => {logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea {}, esto no está soportado",.{instructions[i].original_line});},
+            .BEQ => {
+                logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea {}, esto no está soportado al crear diagramas",.{instructions[i].original_line});
+                return error.BadlyFormed;
+            },
         }
         try result.appendSlice(text);
     }

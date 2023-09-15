@@ -1,0 +1,38 @@
+MOV one i
+MOV zero j
+MOV zero res
+MOV base acbase
+CMP expo zero
+BEQ end1
+CMP base zero
+BEQ end0
+CMP zero zero
+BEQ loop0
+loop1e : MOV mult acbase
+MOV zero mult
+loop0 : CMP expo i
+BEQ endm
+loop1 : CMP base j
+BEQ loop1e
+ADD acbase mult
+ADD one j
+CMP zero zero
+BEQ loop1
+endm : MOV acbase res
+CMP zero zero
+BEQ end
+end1 : MOV one res
+BEQ end
+end0 : MOV zero res
+*end : BEQ end
+
+zero : 0
+one : 1
+i : 0
+j : 0
+base : 0
+expo : 0
+acbase : 0
+mult : 0
+res : 0
+
