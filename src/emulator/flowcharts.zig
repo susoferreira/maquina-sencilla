@@ -8,8 +8,6 @@ const MS_OPCODE = @import("./components.zig").MS_OPCODE;
 const logger = std.log.scoped(.flowcharts);
 
 
-
-
 fn getCMPText(alloc:std.mem.Allocator,ins : assembler.instruction)![]const u8{
     var words = std.mem.tokenize(u8,ins.original_text," ");
     std.debug.assert(std.mem.eql(u8,words.next().?,"CMP") or std.mem.eql(u8,words.next().?,"CMP") or std.mem.eql(u8,words.next().?,"CMP"));
