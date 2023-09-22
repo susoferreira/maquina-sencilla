@@ -376,6 +376,8 @@ pub const UC = struct{
     fn load_operation(self:*UC)void{
         self.w_r.* = false;
         self.enable_add_pc.* = true;
+        
+        self.alu_out.*=ALU_OPCODE.NOOP;
 
         if(self.flag_jump){
             self.mux_selection.* = MUX_CHOICES.CHOOSE_DIR2;
