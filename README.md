@@ -3,26 +3,26 @@ Emulador sencillo de una hipotética máquina con 256bytes de memoria, sin regis
 ```FZ```, se ha creado con objetivos educativos (tanto para mi como para quién pueda leer el código,ya que en su mayoría es muy legible y fácil de entender (```src/components.zig```))
 
 ## Instrucciones de uso
-- Descargar el emulador de [Releases](https://github.com/susoferreira/maquina-sencilla/releases), Es un ejecutable tanto para windows como para linux. En el futuro se creará una release para macos y posiblemente para web
+- Descargar el emulador de [Releases](https://github.com/susoferreira/maquina-sencilla/releases) o usar la versión [web](susoferreira.github.io)
 - El ejecutable tiene docking activado, lo que significa que las ventanas se pueden acoplar entre ellas como prefiera el usuario.
-- El programa de ejemplo que viene precargado demuestra como funciona la sintaxis del assembler, usando ```:label```, ```:*breakpoint``` y ```;comentario```
+- El programa de ejemplo que viene precargado demuestra como funciona la sintaxis del assembler, usando ```label :```, ```*breakpoint :``` y ```;comentario```
 - En el menu se pueden ver las opciones que ofrece el programa: Guardar y cargar archivos (texto plano), exportar a .ms (versión de msdos de la maquina sencilla) y generar diagrama. tambien las opciones de ejecucción del código (ensamblar, ejecutar instruccion...)
-
-### Logs y errores
-
-Los logs y errores del programa **por el momento** se muestran por la consola.
-Si encuentras algún bug en el programa por favor reportalo en issues
 
 ### Generación de diagramas
 Los diagramas se generan analizando las instrucciones y usando mermaid. El resultado inicial no es perfecto pero es fácilmente modificable al editar el html o incluso al editar el código del html en un editor de mermaid
 
 ### Avanzado 
-- El inspector de variables internas de la máquina permite modificar su estado, aunque modificar algunas de estas variables (como ALU_ENABLE_A la mayoría del tiempo no afectará a la ejecución, porque son inmediatamente sobreescritas según el estado de  ```UC_INTERNAL_STATE```)
+- El inspector de variables internas de la máquina permite modificar su estado, aunque modificar algunas de estas variables (como ```ALU_ENABLE_A``` la mayoría del tiempo no afectará a la ejecución, porque son inmediatamente sobreescritas según el estado de  ```UC_INTERNAL_STATE```)
 
 ## Compilar
 1. Descargar [Zig](https://ziglang.org/)
 2. ```zig build run```
 3. Mirar la documentación de zig si quieres compilar a otros targets
+  ### Web
+  - Descargar emsdk en la raíz del proyecto
+  - Instalar un sdk
+  - ejecutar ```./build_web.sh```
+  - Para lanzarlo se **necesita** un servidor web, se puede usar ```./emsdk/upstream/emscripten/emrun ./zig-out/web/emu.html```
 
 ## Librerías usadas
 
