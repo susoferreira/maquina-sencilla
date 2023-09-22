@@ -165,7 +165,7 @@
   document.getElementsByClassName("download")[0].onclick = function(){
     var svgImage = document.getElementById('id1');
     var svgXML = (new XMLSerializer).serializeToString(svgImage);
-    downloadString(svgXML,"svg","diagrama.svg");
+    downloadBlob(svgXML,"diagrama.svg",'application/octet-stream');
   }
 
 
