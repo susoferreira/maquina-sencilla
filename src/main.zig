@@ -36,7 +36,7 @@ pub const std_options = struct {
             std.log.defaultLog(message_level, scope,format, args);
         }
     }
-    pub const log_level: std.log.Level = .err;
+    pub const log_level: std.log.Level = .info;
 };
 
 const log = struct {
