@@ -934,6 +934,7 @@ void TextEditor::Render()
 			}
 
 			// Draw error markers
+			//modificado para mostrar el program_counter
 			auto errorIt = mErrorMarkers.find(lineNo + 1);
 			if (errorIt != mErrorMarkers.end())
 			{
@@ -944,11 +945,7 @@ void TextEditor::Render()
 				{
 					ImGui::BeginTooltip();
 					ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
-					ImGui::Text("Error at line %d:", errorIt->first);
-					ImGui::PopStyleColor();
-					ImGui::Separator();
-					ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.2f, 1.0f));
-					ImGui::Text("%s", errorIt->second.c_str());
+					ImGui::Text("Program counter en esta instrucción", errorIt->first);
 					ImGui::PopStyleColor();
 					ImGui::EndTooltip();
 				}

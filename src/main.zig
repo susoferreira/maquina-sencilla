@@ -432,6 +432,7 @@ fn advance_instruction()void{
     while(maquina.control_unit.state != UC_STATES.DECODE_OPERATION){
         maquina.update() catch unreachable;
     }
+    showPC();
 }
 
 fn run_until_breakpoint()void{
@@ -442,6 +443,7 @@ fn run_until_breakpoint()void{
     while(!std.mem.containsAtLeast(u7,assembled.breakpoint_indexes.items,1,&[_]u7{maquina.program_counter.stored_pc.*+1})){
         maquina.update() catch unreachable;
     }
+    showPC();
 }
 
 fn reset_machine()void{
@@ -462,6 +464,7 @@ fn shortcuts()void{
         save_asm();
     }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_U, 0 , 0)){
         maquina.update() catch unreachable;
+        showPC();
     }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_Enter, 0 , 0)){
         advance_instruction();
     }if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_B, 0 , 0)){
@@ -670,4 +673,8 @@ pub fn draw_log_viewer()void{
     }
 
     c.igEnd();
+}
+
+fn showPC()void{
+    c.editorSetPC(@intCast(assembled.instructions.items[maquina.pc_out].original_line));
 }

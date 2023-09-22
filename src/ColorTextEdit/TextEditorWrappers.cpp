@@ -1,4 +1,6 @@
+#include <map>
 #include <string.h>
+#include <string>
 #include "TextEditor.h"
 TextEditor editor;
 auto lang = TextEditor::LanguageDefinition::MaquinaSencilla();
@@ -15,6 +17,7 @@ extern "C"{
         editor.SetPalette(TextEditor::GetDarkPalette());
         lastText = new char[1];
         strncpy(lastText,"",1);
+        
     }
 
     void drawAssemblyEditor(void){
@@ -41,6 +44,14 @@ extern "C"{
         }
         editor.SetBreakpoints(bpts);
     }
+
+    void editorSetPC(int line_number){
+        std::map<int, std::string> pc;
+        pc[line_number]="";
+        
+        editor.SetErrorMarkers(pc);
+    }
+
     const char* getAssemblyEditorText(void){
         delete [] lastText; 
         std::string text = editor.GetText();
