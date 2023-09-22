@@ -26,29 +26,44 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
     while(i < instructions.len) : (i+=1){
 
         if(instructions[i].is_data){
+            logger.info("datos encontrados en medio del programa: {s}", .{instructions[i].original_text});
+            continue;
+        }
+        if(instructions[i].is_breakpoint){
+            logger.info("breakpoint encontrado: {s}", .{instructions[i].original_text});
+            try result.appendSlice(try std.fmt.allocPrint(alloc,"{}[{s}] --> -1[FIN]\n",.{i,instructions[i].original_text}));
             continue;
         }
         
         var ins_data = decode_instruction(instructions[i].data);
-        
         var text :[]const u8 = undefined;
         switch (ins_data.op) {
             .ADD,.MOV => {
                 var next_data = decode_instruction(instructions[i+1].data);
-                if(next_data.op  == .CMP){
 
-                    if(next_data.dir1 == next_data.dir2){
-                        //next is unconditional jump
-                        text = try std.fmt.allocPrint(alloc,"{}[{s}]\n",.{i,instructions[i].original_text});
-                    }else{
-                        text = try std.fmt.allocPrint(alloc,"{}[{s}] --> {}\n",.{i,instructions[i].original_text,i+3});
+                switch(next_data.op){
+                    .CMP =>{
+                        if(next_data.dir1 == next_data.dir2){
+                            //next is unconditional jump
+                            text = try std.fmt.allocPrint(alloc,"{}[{s}]",.{i,instructions[i].original_text});
+                        }else{
+                            //conditional jump
+                            text = try std.fmt.allocPrint(alloc,"{}[{s}]-->{}\n",.{i,instructions[i].original_text,i+1});
+                        }
+                    },
+                    .BEQ => {
+                        logger.info("Se ha encontrado un BEQ sin un CMP antes en la línea {}, asumiendo que es un salto incondicional",.{instructions[i].original_line});
+                        text = try std.fmt.allocPrint(alloc,"{}[{s}] --> {}\n",.{i,instructions[i].original_text,next_data.dir2});
+                        if(!instructions[i+1].is_breakpoint) i+=1;//we skip the beq as we have already processed it
+                    },
+                    else => {
+                        text = try std.fmt.allocPrint(alloc,"{}[{s}] --> {}\n",.{i,instructions[i].original_text,i+1});
                     }
-                }else{
-                    text = try std.fmt.allocPrint(alloc,"{}[{s}] --> {}\n",.{i,instructions[i].original_text,i+1});
                 }
             },
 
             .CMP => {
+                var last_instruction_index = i-1;
                 var lbl_name = blk : {
                 if(instructions[i].name)|n|{
                     break :blk try std.mem.concat(alloc,u8,&[_][]const u8{n," : "});
@@ -72,7 +87,7 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
                 if(ins_data.dir1 == ins_data.dir2){
                     //always jump
                     // last_instruction --> jump_destination
-                    text = try std.fmt.allocPrint(alloc,"{} --> {}\n",.{i-1,jump_data.dir2});
+                    text = try std.fmt.allocPrint(alloc,"--> {}\n",.{jump_data.dir2});
                     i+=1; //skip the beq
                 }else{
                     var cmp_info = try getCMPText(alloc, instructions[i]);
@@ -80,9 +95,8 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
                         var next_data = decode_instruction(instructions[i+2].data);
                         if(next_data.op  == .CMP and next_data.dir1 == next_data.dir2){
                             //unconditional jump after conditional jump
-                            //we need to create a special case for this because unconditional jumps dont create new nodes so we would not have any index to jump to
-                            var next_jump_data = decode_instruction(instructions[i+3].data);
                             i+=3; //skip all this instructions
+                            var next_jump_data = decode_instruction(instructions[i].data);
                             break :blk next_jump_data.dir2;
                         }
                         i+=1;
@@ -90,19 +104,16 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
                     };
 
                     text = try std.fmt.allocPrint(alloc, "{}{{{s}{s}}} -->|Sí|{}\n{} -->|No| {}\n",
-                                .{i-1,lbl_name,cmp_info,jump_data.dir2,
-                                i-1,no_index});
-                }                
+                        .{last_instruction_index+1,lbl_name,cmp_info,jump_data.dir2,
+                        last_instruction_index+1,no_index});
+                }
             },
-            .BEQ => {
-                logger.err("Se ha encontrado un BEQ sin un CMP antes en la línea {}, esto no está soportado al crear diagramas",.{instructions[i].original_line});
-                return error.BadlyFormed;
-            },
+            .BEQ => unreachable,
         }
+        logger.debug("Texto insertado: {s}", .{text});
         try result.appendSlice(text);
     }
-    _ = result.pop();//remove last newline
-    try result.appendSlice(try std.fmt.allocPrint(alloc,"[FIN]\n",.{}));
+
     return std.fmt.allocPrint(alloc,template,.{result.items}); // we dont need to worry about deallocation because of the arena
 }
 
@@ -156,3 +167,4 @@ test "test diagrama"{
 
     _ = try buildFlowchart(&arena,assembler_results);   
 }
+
