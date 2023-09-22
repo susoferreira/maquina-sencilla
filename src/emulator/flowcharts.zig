@@ -64,12 +64,7 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
 
             .CMP => {
                 var last_instruction_index = i-1;
-                var lbl_name = blk : {
-                if(instructions[i].name)|n|{
-                    break :blk try std.mem.concat(alloc,u8,&[_][]const u8{n," : "});
-                }
-                    break :blk "";
-                };
+                var lbl_name = if(instructions[i].name) |n| try std.mem.concat(alloc,u8,&[_][]const u8{n," : "}) else "";
 
                 if (i+1 > instructions.len){
                     logger.err("Se ha encontrado un CMP sin ninguna instrucción despues en la linea {}",.{instructions[i].original_line});
@@ -77,13 +72,11 @@ pub fn buildFlowchart(arena : *std.heap.ArenaAllocator ,assembly : assembler.ass
                 }
 
                 var jump_data = decode_instruction(instructions[i+1].data);
-                
                 if(jump_data.op != .BEQ) {
                     logger.err("Se ha encontrado una instrucción distinta de beq después de un cmp en la línea {}, esto no está soportado", .{instructions[i+1].original_line});
                     return error.BadlyFormed;
                 }
-
-
+                
                 if(ins_data.dir1 == ins_data.dir2){
                     //always jump
                     // last_instruction --> jump_destination
