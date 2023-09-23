@@ -452,6 +452,7 @@ fn reset_machine()void{
 
     assembled.deinit();
     assembled = assembler.assemble_program("",alloc) catch unreachable;
+    showPC();
 
 }
 
@@ -533,9 +534,10 @@ fn editor_window()void{
         if(c.igBeginMenu("Assembler",true)){
             if (c.igMenuItem_Bool("Assemble","Ctrl+T",false,true))
                 ensamblar();
-            if(c.igMenuItem_Bool("Advance one clock cycle","Ctrl+U",false,true))
+            if(c.igMenuItem_Bool("Advance one clock cycle","Ctrl+U",false,true)){
                 maquina.update() catch unreachable;
-            
+                showPC();
+            }
             if(c.igMenuItem_Bool("Advance one instruction","Ctrl+Enter",false,true)){
                 advance_instruction();
             }
@@ -676,5 +678,9 @@ pub fn draw_log_viewer()void{
 }
 
 fn showPC()void{
-    c.editorSetPC(@intCast(assembled.instructions.items[maquina.pc_out].original_line));
+    if(maquina.pc_out-|1 < assembled.instructions.items.len) {
+        c.editorSetPC(@intCast(assembled.instructions.items[maquina.pc_out-|1].original_line));
+    }else{
+        c.editorSetPC(-1);
+    }
 }

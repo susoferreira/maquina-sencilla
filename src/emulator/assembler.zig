@@ -119,11 +119,14 @@ pub fn assemble_program(program: []const u8, allocator: std.mem.Allocator) !asse
 
 fn first_pass(lines: *std.mem.SplitIterator(u8,.scalar), instructions: *std.ArrayList(instruction), labels: *std.StringHashMap(*instruction)) !void {
     var line_number : usize = 1;
-    var index : u7 = 0;
+    var index : usize = 0;
 
     while (lines.next()) |line| : (line_number += 1) {
 
-    
+        if(index > 127){
+            logger.err("El programa excede la memoria de la maquina {} > 128",.{index+1});
+            return error.ProgramTooBig;
+        }
         var words = std.mem.tokenize(u8, line, " ");
         
         var first_word = words.peek() orelse continue; //on empty line continue
@@ -155,7 +158,7 @@ fn first_pass(lines: *std.mem.SplitIterator(u8,.scalar), instructions: *std.Arra
         }
         //first pass we dont assemble anything
         var current: instruction = .{
-            .index = index,
+            .index = @intCast(index),
             .data = undefined,
             .name = name,
             .is_data = undefined,
