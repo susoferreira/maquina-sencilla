@@ -3,7 +3,7 @@ Emulador sencillo de una hipotética máquina con 256bytes de memoria, sin regis
 ```FZ```, se ha creado con objetivos educativos (tanto para mi como para quién pueda leer el código,ya que en su mayoría es muy legible y fácil de entender (```src/components.zig```))
 
 ## Instrucciones de uso
-- Descargar el emulador de [Releases](https://github.com/susoferreira/maquina-sencilla/releases) o usar la versión [web](susoferreira.github.io)
+- Descargar el emulador de [Releases](https://github.com/susoferreira/maquina-sencilla/releases) o usar la versión [web](https://susoferreira.github.io)
 - El ejecutable tiene docking activado, lo que significa que las ventanas se pueden acoplar entre ellas como prefiera el usuario.
 - El programa de ejemplo que viene precargado demuestra como funciona la sintaxis del assembler, usando ```label :```, ```*breakpoint :``` y ```;comentario```
 - En el menu se pueden ver las opciones que ofrece el programa: Guardar y cargar archivos (texto plano), exportar a .ms (versión de msdos de la maquina sencilla) y generar diagrama. tambien las opciones de ejecucción del código (ensamblar, ejecutar instruccion...)
@@ -18,6 +18,7 @@ Los diagramas se generan analizando las instrucciones y usando mermaid. El resul
 1. Descargar [Zig](https://ziglang.org/)
 2. ```zig build run```
 3. Mirar la documentación de zig si quieres compilar a otros targets
+> Nota: Es importante clonar el repositorio con submodulos incluídos: ```git clone --recurse-submodules https://github.com/susoferreira/maquina-sencilla```
   ### Web
   - Descargar emsdk en la raíz del proyecto
   - Instalar un sdk
