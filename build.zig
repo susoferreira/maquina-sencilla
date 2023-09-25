@@ -45,7 +45,7 @@ pub fn web_build(b:*std.Build,config : Config,optimize: std.builtin.Mode,target:
 
     
     libsokol.defineCMacro("__EMSCRIPTEN__", "1");
-    libsokol.addIncludePath(include_path);
+    libsokol.addIncludePath(.{.path=include_path});
 
     const cpp_args = [_][]const u8{ "-Wno-deprecated-declarations", "-Wno-return-type-c-linkage", "-fno-exceptions", "-fno-threadsafe-statics" };
     _ = cpp_args;
@@ -68,8 +68,8 @@ pub fn lib_sokol_cimgui(b:*std.Build,config : Config,optimize: std.builtin.Mode,
     });
     lib.linkLibC();
     lib.setVerboseLink(true);
-    lib.addIncludePath("src/");
-    lib.addCSourceFile("src/c/compilation.c",&[_][]u8{""});
+    lib.addIncludePath(.{.path="src/"});
+    lib.addCSourceFile(.{.file=.{.path="src/c/compilation.c"},.flags=&[_][]u8{""}});
 
     var _backend = config.backend;
         if (_backend == .auto) {
@@ -149,7 +149,7 @@ pub fn native_build(b:*std.Build,config : Config,optimize: std.builtin.Mode,targ
 
         exe.linkLibC();
         exe.linkLibCpp();//imgui needs libcpp
-        exe.addIncludePath("src/");
+        exe.addIncludePath(.{.path="src/"});
 
 
         //native file dialog
@@ -162,23 +162,21 @@ pub fn native_build(b:*std.Build,config : Config,optimize: std.builtin.Mode,targ
         exe.linkLibrary(lib_sokol);
 
         const cpp_args = [_][]const u8{ "-Wno-deprecated-declarations", "-Wno-return-type-c-linkage", "-fno-exceptions", "-fno-threadsafe-statics" };
-        exe.addCSourceFile("src/cimgui/imgui/imgui.cpp", &cpp_args);
+        exe.addCSourceFile(.{.file=.{.path="src/cimgui/imgui/imgui.cpp"},.flags=&cpp_args});
         // Need to add this after updating imgui to 1.80+
-        exe.addCSourceFile("src/cimgui/imgui/imgui_tables.cpp", &cpp_args);
-        exe.addCSourceFile("src/cimgui/imgui/imgui_demo.cpp", &cpp_args);
-        exe.addCSourceFile("src/cimgui/imgui/imgui_draw.cpp", &cpp_args);
-        exe.addCSourceFile("src/cimgui/imgui/imgui_widgets.cpp", &cpp_args);
-        exe.addCSourceFile("src/cimgui/cimgui.cpp", &cpp_args);
+        exe.addCSourceFile(.{.file=.{.path="src/cimgui/imgui/imgui_tables.cpp"},.flags=&cpp_args});
+        exe.addCSourceFile(.{.file=.{.path="src/cimgui/imgui/imgui_demo.cpp"},.flags=&cpp_args});
+        exe.addCSourceFile(.{.file=.{.path="src/cimgui/imgui/imgui_draw.cpp"},.flags=&cpp_args});
+        exe.addCSourceFile(.{.file=.{.path="src/cimgui/imgui/imgui_widgets.cpp"},.flags=&cpp_args});
+        exe.addCSourceFile(.{.file=.{.path="src/cimgui/cimgui.cpp"},.flags=&cpp_args});
 
         //hex editor (from imgui-club on github)
-        exe.addCSourceFile("src/hex_editor/hex_editor_wrappers.cpp",&cpp_args);
+        exe.addCSourceFile(.{.file=.{.path="src/hex_editor/hex_editor_wrappers.cpp"},.flags=&cpp_args});
 
         //ImGuiColorTextEdit (also from github)
-        exe.addCSourceFile("src/ColorTextEdit/TextEditor.cpp",&cpp_args);
-        exe.addCSourceFile("src/ColorTextEdit/TextEditorWrappers.cpp",&cpp_args);
+        exe.addCSourceFile(.{.file=.{.path="src/ColorTextEdit/TextEditor.cpp"},.flags=&cpp_args});
+        exe.addCSourceFile(.{.file=.{.path="src/ColorTextEdit/TextEditorWrappers.cpp"},.flags=&cpp_args});
 
-
-        
 
         b.installArtifact(exe);
         var run_cmd = b.addRunArtifact(exe);
