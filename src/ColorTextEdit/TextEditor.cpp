@@ -945,7 +945,7 @@ void TextEditor::Render()
 				{
 					ImGui::BeginTooltip();
 					ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
-					ImGui::Text("Program counter en esta instrucción", errorIt->first);
+					ImGui::Text("Instrucción ejecutandose actualmente");
 					ImGui::PopStyleColor();
 					ImGui::EndTooltip();
 				}
