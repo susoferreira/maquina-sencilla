@@ -1,0 +1,19 @@
+// because zon file is really just a zig struct
+// comments are really done in the same way using 2 forward slashes
+.{
+    // the name of your project
+    .name = "maquina-sencilla",
+    // the version of your project
+    .version = "1.8.0",
+
+    // the actual packages you need as dependencies of your project 
+    .dependencies = .{
+        // the name of the package
+        .nfd = .{
+            // the url to the release of the module
+            .url = "https://github.com/fabioarnold/nfd-zig/archive/refs/heads/master.tar.gz",
+            .hash = "12201079ca80d9a7cfe9f2f3ffe4d5e92627a48dfdec5dd3c8cf9a1609f746a9e17f",
+            // the hash of the module, this is not the checksum of the tarball
+        }
+    }
+}

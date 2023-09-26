@@ -3,9 +3,6 @@ const CrossTarget = @import("std").zig.CrossTarget;
 const Mode = std.builtin.Mode;
 const LibExeObjStep = std.build.LibExeObjStep;
 
-// native file dialog
-const nfd_build = @import("deps/nfd-zig/build.zig");
-
 
 pub const Config = struct {
     backend: Backend = .auto,
@@ -153,9 +150,13 @@ pub fn native_build(b:*std.Build,config : Config,optimize: std.builtin.Mode,targ
 
 
         //native file dialog
-        exe.addModule("nfd", nfd_build.getModule(b));
-        const nfd_lib = nfd_build.makeLib(b,target,optimize);
-        exe.linkLibrary(nfd_lib);
+        const nfd = b.dependency("nfd", .{
+            .target = target,
+            .optimize = optimize,
+        });
+
+        exe.addModule("nfd", nfd.module("nfd"));
+        exe.linkLibrary(nfd.artifact("nfd"));
 
         //cimgui + sokol
         const lib_sokol = try lib_sokol_cimgui(b,config,optimize,target);

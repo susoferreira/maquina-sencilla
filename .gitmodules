@@ -4,6 +4,3 @@
 [submodule "src/sokol"]
 	path = src/sokol
 	url = https://github.com/floooh/sokol
-[submodule "deps/nfd-zig"]
-	path = deps/nfd-zig
-	url = https://github.com/fabioarnold/nfd-zig
