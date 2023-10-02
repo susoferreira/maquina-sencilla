@@ -12,11 +12,12 @@ pub usingnamespace @cImport({
     @cInclude("sokol/sokol_gfx.h");
     @cInclude("sokol/sokol_time.h");
     @cInclude("sokol/sokol_log.h");
+    @cInclude("c/sokol_gp.h");
     @cInclude("sokol/sokol_audio.h");
-    @cDefine("CIMGUI_DEFINE_ENUMS_AND_STRUCTS", "");
-    @cInclude("cimgui/cimgui.h");
     @cInclude("sokol/util/sokol_imgui.h");
     @cInclude("sokol/sokol_glue.h");
+    @cDefine("CIMGUI_DEFINE_ENUMS_AND_STRUCTS", "");
+    @cInclude("cimgui/cimgui.h");
     @cInclude("hex_editor/hex_editor_wrappers.h");
     @cInclude("ColorTextEdit/TextEditorWrappers.h");
     if(!is_native){

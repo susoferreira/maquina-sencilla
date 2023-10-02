@@ -304,8 +304,8 @@ export fn init() void {
     IO.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
     IO.*.FontAllowUserScaling=true;
 
-    state.pass_action.colors[0].action = c.SG_ACTION_CLEAR;
-    state.pass_action.colors[0].value = c.sg_color{ .r = clear_color[0], .g = clear_color[1], .b = clear_color[2], .a = 1.0 };
+    state.pass_action.colors[0].load_action = c.SG_LOADACTION_CLEAR;
+    state.pass_action.colors[0].clear_value = c.sg_color{ .r = clear_color[0], .g = clear_color[1], .b = clear_color[2], .a = 1.0 };
     //_ = c.ImFontAtlas_AddFontFromFileTTF(IO.*.Fonts,"SpaceMono-Bold.ttf",15,null,null);
     //_ = c.ImFontAtlas_Build(IO.*.Fonts);
     c.setupAssemblyEditor();
