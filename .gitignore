@@ -7,3 +7,4 @@ zig-out
 /target
 emsdk
 .vscode-ctags
+tags
