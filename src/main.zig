@@ -440,7 +440,7 @@ fn run_until_breakpoint()void{
         logger.err("No hay breakpoint, has recordado ensamblar el programa{s}",.{"?"} );
         return;
     }
-    while(!assembled.instructions.items[maquina.program_counter.stored_pc.*-|1].is_breakpoint){
+    while(!assembled.instructions.items[maquina.program_counter.stored_pc.*-|1].is_breakpoint and maquina.cycle_counter < 0x10000000){
         maquina.update() catch unreachable;
     }
     showPC();
