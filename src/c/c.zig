@@ -20,7 +20,6 @@ pub usingnamespace @cImport({
     @cInclude("cimgui/cimgui.h");
     @cInclude("hex_editor/hex_editor_wrappers.h");
     @cInclude("ColorTextEdit/TextEditorWrappers.h");
-    @cInclude("c/stb_image.h");
     if(!is_native){
         @cInclude("./c/web-build.h");
     }

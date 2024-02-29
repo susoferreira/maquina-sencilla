@@ -14,7 +14,6 @@
 #define SOKOL_NO_ENTRY
 #include "sokol/sokol_app.h"
 #include "sokol/sokol_gfx.h"
-#include "c/sokol_gp.h"
 #include "sokol/sokol_time.h"
 #include "sokol/sokol_glue.h"
 #include "sokol/sokol_log.h"
