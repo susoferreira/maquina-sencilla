@@ -24,5 +24,3 @@
 #include "cimgui/cimgui.h"
 #define SOKOL_IMGUI_IMPL
 #include "sokol/util/sokol_imgui.h"
-#define STB_IMAGE_IMPLEMENTATION
-#include "c/stb_image.h"
