@@ -1,7 +1,7 @@
 #!/bin/bash
 source "./emsdk/emsdk_env.sh"
 
-zig build-lib src/main.zig -Lzig-out/lib/ -lc -lcimgui -Isrc/ -target wasm32-freestanding -freference-trace 
+zig build-lib src/main.zig -Lzig-out/lib/ -lc -Isrc/ -target wasm32-freestanding -freference-trace 
 
 #-Doptimize=debug
 
@@ -31,7 +31,6 @@ emcc \
     -sMALLOC='emmalloc' \
     -sEXPORTED_FUNCTIONS=['_malloc','_free','_main'] \
     -sMAX_WEBGL_VERSION=2 \
-    -s TOTAL_MEMORY=2048MB \
     --shell-file ./src/shell.html
     #-g \
 
