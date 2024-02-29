@@ -74,6 +74,7 @@ pub fn lib_sokol_cimgui(b:*std.Build,config : Config,optimize: std.builtin.Mode,
             else if (lib.target.isWindows()) { _backend = .d3d11; }
             else { _backend = .gl; }
         }
+            
 
         if (target.isDarwin()) {
             lib.linkFramework("Cocoa");
@@ -143,7 +144,9 @@ pub fn native_build(b:*std.Build,config : Config,optimize: std.builtin.Mode,targ
             .target = target,
             .optimize = optimize,
         });
-
+        if(target.isWindows()){
+            exe.want_lto = false;
+        }
         exe.linkLibC();
         exe.linkLibCpp();//imgui needs libcpp
         exe.addIncludePath(.{.path="src/"});
