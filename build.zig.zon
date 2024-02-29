@@ -11,7 +11,7 @@
         // the name of the package
         .nfd = .{
             // the url to the release of the module
-            .url = "https://github.com/fabioarnold/nfd-zig/archive/refs/heads/master.tar.gz",
+            .url = "https://github.com/fabioarnold/nfd-zig/archive/refs/heads/zig-0.11.0.tar.gz",
             .hash = "12201079ca80d9a7cfe9f2f3ffe4d5e92627a48dfdec5dd3c8cf9a1609f746a9e17f",
             // the hash of the module, this is not the checksum of the tarball
         }
