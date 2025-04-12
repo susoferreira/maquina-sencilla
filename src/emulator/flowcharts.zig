@@ -48,7 +48,7 @@ pub fn buildFlowchart(arena: *std.heap.ArenaAllocator, assembly: assembler.assem
                         }
                     },
                     .BEQ => {
-                        logger.info("Se ha encontrado un BEQ sin un CMP antes en la línea {}, asumiendo que es un salto incondicional", .{instructions[i].original_line});
+                        logger.info("Se ha encontrado un BEQ sin un CMP antes en la línea {}, asumiendo que es un salto incondicional", .{instructions[i].original_line + 1});
                         text = try std.fmt.allocPrint(alloc, "{}[{s}] --> {}\n", .{ i, instructions[i].original_text, next_data.dir2 });
                         if (!instructions[i + 1].is_breakpoint) i += 1; //we skip the beq as we have already processed it
                     },
