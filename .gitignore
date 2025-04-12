@@ -8,3 +8,5 @@ zig-out
 emsdk
 .vscode-ctags
 tags
+zig-cache
+.zig-cache
