@@ -6,14 +6,13 @@
     // the version of your project
     .version = "1.8.0",
 
-    // the actual packages you need as dependencies of your project 
+    // the actual packages you need as dependencies of your project
     .dependencies = .{
         // the name of the package
         .nfd = .{
-            // the url to the release of the module
-            .url = "https://github.com/fabioarnold/nfd-zig/archive/refs/heads/zig-0.11.0.tar.gz",
-            .hash = "12201079ca80d9a7cfe9f2f3ffe4d5e92627a48dfdec5dd3c8cf9a1609f746a9e17f",
-            // the hash of the module, this is not the checksum of the tarball
-        }
-    }
+            .url = "https://github.com/CoolPuppyKid/nfd-zig/archive/refs/heads/main.tar.gz",
+            .hash = "12205af00e662ac12ee5f725c8f18d784ef2574bc750eea6143157ca10cfc34d8546",
+        },
+    },
+    .paths = .{"."},
 }
