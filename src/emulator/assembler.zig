@@ -227,10 +227,16 @@ fn get_operand(op: []const u8, line_number: usize, labels: std.StringHashMap(*in
 }
 
 fn assemble_instruction(line: []const u8, line_number: usize, labels: std.StringHashMap(*instruction)) !u16 {
-    var words = std.mem.tokenize(u8, line, " "); //we also want to remove ':' from this
+    var words = std.mem.tokenizeAny(u8, line, " ");
 
     logger.debug("ensamblando línea {s}\n", .{line});
-    const opcode: u2 = try get_opcode(words.next().?, line_number);
+
+    const word = words.next() orelse {
+        logger.err("Se esperaba un código de operacion en la linea {} pero no se encontró nada\nRecordatorio: las labels tienen que ir en la misma línea que su instrucción", .{line_number});
+        return error.OpcodeNotFound;
+    };
+
+    const opcode: u2 = try get_opcode(word, line_number);
 
     var dir1: u7 = 0;
     if (opcode != @intFromEnum(components.MS_OPCODE.BEQ)) {
