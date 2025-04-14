@@ -180,10 +180,10 @@ fn second_pass(instructions: []instruction, labels: std.StringHashMap(*instructi
             text = std.mem.trim(u8, text, "*");
         }
 
+        text = std.mem.trim(u8, text, " ");
         if (current.name) |name| {
             text = text[name.len..text.len];
         }
-
         text = std.mem.trim(u8, text, " :");
 
         if (is_number(text)) {
