@@ -250,7 +250,8 @@ fn assemble_instruction(line: []const u8, line_number: usize, labels: std.String
         return error.NotEnoughOperands;
     }, line_number, labels);
 
-    if (words.next() != null) {
+    if (words.peek() != null) {
+        logger.err("Demasiados operandos en linea {}: {s}", .{ line_number, words.rest() });
         return error.TooManyTokens;
     }
 
