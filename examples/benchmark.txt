@@ -1,0 +1,51 @@
+MOV zero i
+MOV zero j
+MOV zero k
+MOV zero counter
+
+loop_i:CMP i max
+BEQ end_benchmark
+
+    MOV zero j
+    loop_j:CMP j max
+    BEQ next_i
+
+        MOV zero k
+        loop_k:CMP k max
+        BEQ next_j
+
+                MOV zero l
+                loop_l:CMP l max
+                BEQ next_k
+
+                ADD one counter
+                ADD one l
+                CMP zero zero
+                BEQ loop_l
+
+            next_k: ADD one k
+            CMP zero zero
+            BEQ loop_k
+        next_j:        ADD one j
+        CMP zero zero
+        BEQ loop_j
+
+    next_i:    ADD one i
+    CMP zero zero
+    BEQ loop_i
+
+*end_benchmark:MOV counter result
+
+; --- Datos ---
+zero: 0x00
+one: 0x01
+max: 0x7E
+i: 0x00
+j: 0x00
+k: 0x00
+l: 0x00
+counter: 0x00
+result: 0x00
+
+
+
