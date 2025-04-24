@@ -12,6 +12,7 @@ const MS_OPCODE = @import("emulator/components.zig").MS_OPCODE;
 const UC_STATES = @import("emulator/components.zig").UC.UC_STATES;
 const ALU_OPCODE = @import("emulator/components.zig").ALU_OPCODE;
 const flowcharts = @import("emulator/flowcharts.zig");
+const jit = @import("emulator/jit.zig").x86_jit;
 
 const ini_file = @embedFile("./imgui.ini");
 const example = @embedFile("./example.txt");
@@ -518,6 +519,14 @@ fn create_flowchart() void {
     }
 }
 
+fn run_jit() void {
+    ensamblar();
+    var jit_compiler: jit = jit.init(alloc, assembled) catch return;
+    jit_compiler.jit();
+    try jit_compiler.run();
+    jit_compiler.debug(); //TODO: fuchicarlo bien
+}
+
 fn editor_window() void {
 
     //shorcuts here are only informative, they must be added in shortcuts()
@@ -556,6 +565,12 @@ fn editor_window() void {
             }
             if (c.igMenuItem_Bool("Reset Machine", "Ctrl+R", false, true)) {
                 reset_machine();
+            }
+            c.igEndMenu();
+        }
+        if (c.igBeginMenu("JIT", true)) {
+            if (c.igMenuItem_Bool("Run as JIT", "CTRL+J", false, true)) {
+                run_jit();
             }
             c.igEndMenu();
         }
