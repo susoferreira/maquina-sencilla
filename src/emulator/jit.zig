@@ -198,14 +198,15 @@ const x86_assembler = struct {
         self.emit8(0xC3);
     }
 
-    fn run(self: *x86_assembler) void {
-        x86_assembler.setRwx(self.code) catch logger.err("Error creando región de memoria ejecutable");
+    fn run(self: *x86_assembler) !void {
+        try x86_assembler.setRwx(self.code);
         @as(*const fn () void, @ptrCast(self.code))();
     }
 
     fn setRwx(slice: []align(std.mem.page_size) u8) !void {
         const value = std.os.linux.mprotect(slice.ptr, slice.len, std.os.linux.PROT.EXEC | std.os.linux.PROT.WRITE | std.os.linux.PROT.READ);
         if (value == -1) {
+            logger.err("Error creando región de memoria ejecutable");
             return error.FailedMprotect;
         }
     }
@@ -349,21 +350,23 @@ pub const x86_jit = struct {
         self.ass.jump_equal_rel32(@intCast(offset));
     }
 
-    pub fn run(self: *x86_jit) void {
-        self.ass.run();
+    pub fn run(self: *x86_jit) !void {
+        try self.ass.run();
     }
 
     // given an index for a variable in MS returns its value in the current jitted code
     // only really makes sense for data, as instructions will be different (and have different lengths) than their MS counterparts
     pub fn get_data_value(self: *x86_jit, index: u7) u16 {
         const pos = self.get_symbol_pos(index) orelse unreachable;
-        return (@as(u16, self.ass.code[pos]) << 8) | self.ass.code[pos];
+        return (@as(u16, self.ass.code[pos + 1]) << 8) | self.ass.code[pos];
     }
 
     pub fn debug(self: *x86_jit) void {
         for (self.program.instructions.items) |i| {
-            if (i.is_data and i.name) |name| {
-                std.debug.print("La variable {} tiene valor {}", .{ name, self.get_data_value(i.index) });
+            if (i.name) |name| {
+                if (i.is_data) {
+                    std.debug.print("La variable {s} tiene valor {x}\n", .{ name, self.get_data_value(i.index) });
+                }
             }
         }
     }

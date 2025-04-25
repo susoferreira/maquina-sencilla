@@ -554,7 +554,7 @@ fn run_jit() void {
     ensamblar();
     jit_compiler = jit.init(alloc, assembled) catch return;
     jit_compiler.jit();
-    jit_compiler.run();
+    jit_compiler.run() catch return;
     should_show_jit = true;
 }
 
