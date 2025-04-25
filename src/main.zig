@@ -89,6 +89,9 @@ var assembled: assembler.assembler_result = undefined; //we give it value on ini
 var log_arena: std.heap.ArenaAllocator = undefined;
 var logs: std.ArrayList(log) = undefined;
 var need_load_ini = true;
+var should_show_jit = false;
+var jit_compiler: jit = undefined;
+
 pub fn inspector_for_u16(name: []const u8, memory: *u16) void {
     c.igTableNextRow(0, 0);
 
@@ -209,6 +212,25 @@ pub fn inspector_labels() void {
         c.igEndTable();
     }
     c.igEnd();
+}
+
+pub fn inspector_labels_jit() void {
+    var table_size: c.struct_ImVec2 = undefined;
+    c.igGetContentRegionAvail(&table_size);
+    if (c.igBeginTable("jit_results", 2, c.ImGuiTableFlags_NoHostExtendX | c.ImGuiTableFlags_NoHostExtendY, table_size, 0)) {
+        c.igTableSetupColumn("Etiqueta", 0, 0, 0);
+        c.igTableSetupColumn("Valor (hex)", 0, 0, 0);
+        c.igTableHeadersRow();
+
+        for (jit_compiler.program.instructions.items) |ins| {
+            if (ins.name) |name| {
+                if (ins.is_data) {
+                    const_int_inspector(name, jit_compiler.get_data_value(ins.index));
+                }
+            }
+        }
+        c.igEndTable();
+    }
 }
 
 pub fn struct_inspector(comptime T: type, instance: T) void {
@@ -530,10 +552,20 @@ fn create_flowchart() void {
 
 fn run_jit() void {
     ensamblar();
-    var jit_compiler: jit = jit.init(alloc, assembled) catch return;
+    jit_compiler = jit.init(alloc, assembled) catch return;
     jit_compiler.jit();
-    try jit_compiler.run();
-    jit_compiler.debug(); //TODO: fuchicarlo bien
+    jit_compiler.run();
+    should_show_jit = true;
+}
+
+fn show_jit_results() void {
+    if (should_show_jit) {
+        c.igSetNextWindowPos(.{ .x = @as(f32, @floatFromInt(c.sapp_width())) / 2, .y = @as(f32, @floatFromInt(c.sapp_height())) / 2 }, c.ImGuiCond_Appearing, .{ .x = 1.0, .y = 0.0 });
+        if (c.igBegin("Resultados JIT", &should_show_jit, c.ImGuiWindowFlags_AlwaysAutoResize)) {
+            inspector_labels_jit();
+            c.igEnd();
+        }
+    }
 }
 
 fn editor_window() void {
@@ -612,6 +644,7 @@ export fn update() void {
     c.draw_hex_editor(&maquina.system_memory.memory, maquina.system_memory.memory.len);
 
     draw_log_viewer();
+    show_jit_results();
 
     if (need_load_ini) {
         need_load_ini = false;
