@@ -266,16 +266,19 @@ pub const x86_jit = struct {
         for (0..2) |i| {
             self.ass.prologue();
             for (self.program.instructions.items) |ins| {
+                const decoded = decode_instruction(ins.data);
                 self.record_symbol_pos();
 
-                if (ins.is_breakpoint) {
+                if (ins.is_breakpoint and decoded.op == .BEQ) {
+                    // we do not execute BEQ when it is a breakpoint bc it could easily cause infinite loops
+                    // example: *end: BEQ end
+                    logger.info("breakpoint sin ejecutar instruccion\n", .{});
                     self.ass.epilogue();
                 }
 
                 if (ins.is_data) {
                     self.compile_data(ins.data);
                 } else {
-                    const decoded = decode_instruction(ins.data);
                     switch (decoded.op) {
                         .ADD => {
                             self.compile_add(decoded.dir1, decoded.dir2);
@@ -290,6 +293,12 @@ pub const x86_jit = struct {
                             self.compile_beq(decoded.dir2);
                         },
                     }
+                }
+
+                if (ins.is_breakpoint and decoded.op != .BEQ) {
+                    // when instruction is not a jump, we execute it and then return
+                    logger.info("breakpoint ejecutando instruccion\n", .{});
+                    self.ass.epilogue();
                 }
             }
             self.ass.epilogue();
@@ -396,8 +405,7 @@ test "jit_test" {
         \\BEQ found
         \\CMP zero zero
         \\BEQ distance
-        \\found :MOV j res
-        \\*end: BEQ end
+        \\*found :MOV j res
         \\num2 : 0xabcd
         \\num1 : 0x4321
         \\i : 0x0000
