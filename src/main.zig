@@ -17,6 +17,21 @@ const jit = @import("emulator/jit.zig").x86_jit;
 const ini_file = @embedFile("./imgui.ini");
 const example = @embedFile("./example.txt");
 
+pub const is_native = switch (builtin.os.tag) {
+    .windows, .linux => true,
+    .freestanding => false,
+    else => {
+        @compileError("platform not supported");
+    },
+};
+
+pub const is_x64 = switch (builtin.cpu.arch) {
+    .x86_64 => true,
+    else => false,
+};
+
+const nfd = if (is_native) @import("nfd");
+
 pub fn logFn(
     comptime message_level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
@@ -43,15 +58,6 @@ const log = struct {
     scope: []const u8, //we need to save it as text bc else it would be comptime
     text: []const u8,
 };
-
-pub const is_native = switch (builtin.os.tag) {
-    .windows, .linux => true,
-    .freestanding => false,
-    else => {
-        @compileError("platform not supported");
-    },
-};
-const nfd = if (is_native) @import("nfd");
 
 const State = struct {
     pass_action: c.sg_pass_action,
@@ -485,6 +491,9 @@ fn shortcuts() void {
     if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_R, 0, 0)) {
         reset_machine();
     }
+    if (is_x64 and c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_J, 0, 0)) {
+        run_jit();
+    }
 }
 
 fn create_flowchart() void {
@@ -568,13 +577,15 @@ fn editor_window() void {
             }
             c.igEndMenu();
         }
-        if (c.igBeginMenu("JIT", true)) {
-            if (c.igMenuItem_Bool("Run as JIT", "CTRL+J", false, true)) {
-                run_jit();
+        if (is_x64) {
+            if (c.igBeginMenu("JIT", true)) {
+                if (c.igMenuItem_Bool("Run as JIT", "CTRL+J", false, true)) {
+                    run_jit();
+                }
+                c.igEndMenu();
             }
-            c.igEndMenu();
+            c.igEndMenuBar();
         }
-        c.igEndMenuBar();
     }
 }
 
