@@ -172,7 +172,6 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const config: Config = .{};
-    std.debug.print("target: {any}\n", .{target});
     if (target.result.cpu.arch != .wasm32) {
         native_build(b, config, optimize, target) catch unreachable;
     } else {
