@@ -217,7 +217,7 @@ pub fn inspector_labels() void {
 pub fn inspector_labels_jit() void {
     var table_size: c.struct_ImVec2 = undefined;
     c.igGetContentRegionAvail(&table_size);
-    if (c.igBeginTable("jit_results", 2, c.ImGuiTableFlags_NoHostExtendX | c.ImGuiTableFlags_NoHostExtendY, table_size, 0)) {
+    if (c.igBeginTable("jit_results", 2, c.ImGuiTableFlags_NoHostExtendX, table_size, 0)) {
         c.igTableSetupColumn("Etiqueta", 0, 0, 0);
         c.igTableSetupColumn("Valor (hex)", 0, 0, 0);
         c.igTableHeadersRow();
@@ -562,6 +562,9 @@ fn show_jit_results() void {
     if (should_show_jit) {
         c.igSetNextWindowPos(.{ .x = @as(f32, @floatFromInt(c.sapp_width())) / 2, .y = @as(f32, @floatFromInt(c.sapp_height())) / 2 }, c.ImGuiCond_Appearing, .{ .x = 1.0, .y = 0.0 });
         if (c.igBegin("Resultados JIT", &should_show_jit, c.ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (c.igSmallButton("guardar Binario")) {
+                fs_wrapper.save_file_as(alloc, "JIT.bin", jit_compiler.ass.code);
+            }
             inspector_labels_jit();
             c.igEnd();
         }
