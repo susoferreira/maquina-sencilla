@@ -198,8 +198,8 @@ const x86_assembler = struct {
         self.emit8(0xC3);
     }
 
-    fn run(self: *x86_assembler) !void {
-        try x86_assembler.setRwx(self.code);
+    fn run(self: *x86_assembler) void {
+        x86_assembler.setRwx(self.code) catch logger.err("Error creando región de memoria ejecutable");
         @as(*const fn () void, @ptrCast(self.code))();
     }
 
@@ -249,12 +249,12 @@ pub const x86_jit = struct {
         self.ass.deinit();
     }
 
-    fn record_symbol(self: *x86_jit) void {
+    fn record_symbol_pos(self: *x86_jit) void {
         self.symbols[self.symbols_cursor] = self.ass.cursor;
         self.symbols_cursor += 1;
     }
 
-    fn get_symbol(self: *x86_jit, ms_index: u7) ?u16 {
+    fn get_symbol_pos(self: *x86_jit, ms_index: u7) ?u16 {
         if (self.symbols_cursor > ms_index) {
             return self.symbols[ms_index];
         }
@@ -265,7 +265,7 @@ pub const x86_jit = struct {
         for (0..2) |i| {
             self.ass.prologue();
             for (self.program.instructions.items) |ins| {
-                self.record_symbol();
+                self.record_symbol_pos();
 
                 if (ins.is_breakpoint) {
                     self.ass.epilogue();
@@ -303,8 +303,8 @@ pub const x86_jit = struct {
     }
 
     fn compile_add(self: *x86_jit, src: u7, dst: u7) void {
-        const op1 = self.get_symbol(src) orelse 0x4242;
-        const op2 = self.get_symbol(dst) orelse 0x4242;
+        const op1 = self.get_symbol_pos(src) orelse 0x4242;
+        const op2 = self.get_symbol_pos(dst) orelse 0x4242;
 
         self.ass.mov_reg_si_plus_m32(.AX, op1);
         self.ass.mov_reg_si_plus_m32(.CX, op2);
@@ -315,16 +315,16 @@ pub const x86_jit = struct {
     }
 
     fn compile_mov(self: *x86_jit, src: u7, dst: u7) void {
-        const op1 = self.get_symbol(src) orelse 0x4242;
-        const op2 = self.get_symbol(dst) orelse 0x4242;
+        const op1 = self.get_symbol_pos(src) orelse 0x4242;
+        const op2 = self.get_symbol_pos(dst) orelse 0x4242;
 
         self.ass.mov_reg_si_plus_m32(.AX, op1);
         self.ass.mov_si_plus_m32_reg(op2, .AX);
     }
 
     fn compile_cmp(self: *x86_jit, src: u7, dst: u7) void {
-        const op1 = self.get_symbol(src) orelse 0x4242;
-        const op2 = self.get_symbol(dst) orelse 0x4242;
+        const op1 = self.get_symbol_pos(src) orelse 0x4242;
+        const op2 = self.get_symbol_pos(dst) orelse 0x4242;
 
         self.ass.mov_reg_si_plus_m32(.AX, op1);
         self.ass.mov_reg_si_plus_m32(.CX, op2);
@@ -343,31 +343,27 @@ pub const x86_jit = struct {
     // intel manual page 732
 
     fn compile_beq(self: *x86_jit, dst: u7) void {
-        const index = self.get_symbol(dst) orelse 0x4242;
+        const index = self.get_symbol_pos(dst) orelse 0x4242;
 
-        //offset is index + rsi to get full address - eip bc jump is based of eip
         const offset: i32 = @as(i32, index) - self.ass.cursor - 0x6; //instruction itself is 6 bytes
         self.ass.jump_equal_rel32(@intCast(offset));
     }
 
-    pub fn run(self: *x86_jit) !void {
-        try self.ass.run();
+    pub fn run(self: *x86_jit) void {
+        self.ass.run();
+    }
+
+    // given an index for a variable in MS returns its value in the current jitted code
+    // only really makes sense for data, as instructions will be different (and have different lengths) than their MS counterparts
+    pub fn get_data_value(self: *x86_jit, index: u7) u16 {
+        const pos = self.get_symbol_pos(index) orelse unreachable;
+        return (@as(u16, self.ass.code[pos]) << 8) | self.ass.code[pos];
     }
 
     pub fn debug(self: *x86_jit) void {
         for (self.program.instructions.items) |i| {
-            if (i.is_data) {
-                if (i.name) |name| {
-                    std.debug.print("El valor de {s} es: {x}\n", .{
-                        name,
-                        std.mem.bytesAsSlice(u16, self.ass.code[self.get_symbol(i.index).? .. self.get_symbol(i.index).? + 2]),
-                    });
-                } else {
-                    std.debug.print("El valor de {} es: {}\n", .{
-                        i.index,
-                        self.ass.code[self.get_symbol(i.index).?],
-                    });
-                }
+            if (i.is_data and i.name) |name| {
+                std.debug.print("La variable {} tiene valor {}", .{ name, self.get_data_value(i.index) });
             }
         }
     }
