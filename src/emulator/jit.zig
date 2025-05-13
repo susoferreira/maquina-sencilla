@@ -39,10 +39,15 @@ const x86_assembler = struct {
     code: []align(std.mem.page_size) u8,
     alloc: std.mem.Allocator,
     cursor: u16 = 0,
+    text: std.ArrayList(u8),
 
     pub fn init(alloc: std.mem.Allocator) !x86_assembler {
         const code: []align(std.mem.page_size) u8 = try alloc.alignedAlloc(u8, std.mem.page_size, std.mem.page_size);
-        return .{ .code = code, .alloc = alloc };
+        return .{
+            .code = code,
+            .alloc = alloc,
+            .text = std.ArrayList(u8).init(alloc),
+        };
     }
 
     fn deinit(self: *x86_assembler) void {
@@ -50,6 +55,7 @@ const x86_assembler = struct {
     }
 
     fn prologue(self: *x86_assembler) void {
+        self.write_asm("; Prologo de la función\n", .{});
         self.push_64(.AX);
         self.push_64(.CX);
         self.push_64(.BP);
@@ -58,6 +64,8 @@ const x86_assembler = struct {
     }
 
     fn epilogue(self: *x86_assembler) void {
+        self.write_asm("; Epilogo de la función\n", .{});
+
         self.pop_64(.BP);
         self.pop_64(.CX);
         self.pop_64(.AX);
@@ -105,6 +113,7 @@ const x86_assembler = struct {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0xB8 | @as(u8, @intFromEnum(r1)));
         self.emit16(immediate);
+        self.write_asm("MOV {s}, 0x{x}\n", .{ @tagName(r1), immediate });
     }
 
     //REX.W + B8+ rd io 	MOV r64, imm64
@@ -112,6 +121,8 @@ const x86_assembler = struct {
         self.emit8(REX64);
         self.emit8(0xB8 | @as(u8, @intFromEnum(r1)));
         self.emit64(immediate);
+
+        self.write_asm("MOV R{s}, 0x{x}\n", .{ @tagName(r1), immediate });
     }
 
     // 01 /r 	ADD r/m16, r16
@@ -119,6 +130,8 @@ const x86_assembler = struct {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x01);
         self.emit8(MODRM_reg_reg | @intFromEnum(r1) << 3 | @intFromEnum(r2)); // modR/M
+
+        self.write_asm("MOV {s}, {s}\n", .{ @tagName(r1), @tagName(r2) });
     }
 
     // 8B /r 	MOV r16, r/m16
@@ -126,6 +139,8 @@ const x86_assembler = struct {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x8b);
         self.emit8(MODRM_reg_reg | @intFromEnum(r1) << 3 | @intFromEnum(r2));
+
+        self.write_asm("MOV {s}, {s}\n", .{ @tagName(r1), @tagName(r2) });
     }
 
     // 89 /r 	MOV r/m16, r16
@@ -134,16 +149,19 @@ const x86_assembler = struct {
         self.emit8(0x89);
         self.emit8(MODRM_RSI_PLUS_DISP32 | @intFromEnum(reg) << 3);
         self.emit32(disp);
+
+        self.write_asm("MOV [RSI + 0x{x}], {s}\n", .{ disp, @tagName(reg) });
     }
 
     // 8B /r 	MOV r16, r/m16
-    fn mov_reg_si_plus_m32(self: *x86_assembler, r1: register, disp: u32) void {
+    fn mov_reg_si_plus_m32(self: *x86_assembler, reg: register, disp: u32) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x8B);
 
         //MOD R/M
-        self.emit8(MODRM_RSI_PLUS_DISP32 | @as(u8, @intFromEnum(r1) << 3));
+        self.emit8(MODRM_RSI_PLUS_DISP32 | @as(u8, @intFromEnum(reg) << 3));
         self.emit32(disp);
+        self.write_asm("MOV {s}, [RSI + 0x{x}]\n", .{ @tagName(reg), disp });
     }
 
     // 39 /r 	CMP r/m16, r16
@@ -151,12 +169,16 @@ const x86_assembler = struct {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x39);
         self.emit8(MODRM_reg_reg | @intFromEnum(r1) << 3 | @intFromEnum(r2));
+
+        self.write_asm("CMP {s}, {s}\n", .{ @tagName(r1), @tagName(r1) });
     }
 
     //74 cb 	JE rel8 Jump short if equal (ZF=1).
     fn jump_equal_rel8(self: *x86_assembler, position: i8) void {
         self.emit8(0x74);
         self.emit8_signed(position);
+
+        self.write_asm("JE short {}\n", .{position});
     }
 
     //rel16 not supported on 64 bits
@@ -166,6 +188,8 @@ const x86_assembler = struct {
         self.emit8(0x0F);
         self.emit8(0x84);
         self.emit32(@bitCast(position));
+
+        self.write_asm("JE near {}\n", .{position});
     }
 
     fn lea_for_adding(self: *x86_assembler, dst: register, op1: register, op2: i16) void {
@@ -180,22 +204,31 @@ const x86_assembler = struct {
     // 50+rd 	PUSH r64 	O 	Valid 	N.E. 	Push r64.
     fn push_64(self: *x86_assembler, r: register) void {
         self.emit8(0x50 | @as(u8, @intFromEnum(r)));
+
+        self.write_asm("PUSH R{s}\n", .{@tagName(r)});
     }
 
     fn pushf(self: *x86_assembler) void {
         self.emit8(0x9C);
+        self.write_asm("PUSHF\n", .{});
     }
 
     fn popf(self: *x86_assembler) void {
         self.emit8(0x9D);
+
+        self.write_asm("POPF\n", .{});
     }
 
     fn pop_64(self: *x86_assembler, r: register) void {
         self.emit8(0x58 | @as(u8, @intFromEnum(r)));
+
+        self.write_asm("POP R{s}\n", .{@tagName(r)});
     }
 
     fn ret(self: *x86_assembler) void {
         self.emit8(0xC3);
+
+        self.write_asm("RET\n", .{});
     }
 
     fn run(self: *x86_assembler) !void {
@@ -204,16 +237,26 @@ const x86_assembler = struct {
     }
 
     fn setRwx(slice: []align(std.mem.page_size) u8) !void {
-        const value = std.os.linux.mprotect(slice.ptr, slice.len, std.os.linux.PROT.EXEC | std.os.linux.PROT.WRITE | std.os.linux.PROT.READ);
+        const value = std.os.linux.mprotect(
+            slice.ptr,
+            slice.len,
+            std.os.linux.PROT.EXEC | std.os.linux.PROT.WRITE | std.os.linux.PROT.READ,
+        );
         if (value == -1) {
             logger.err("Error creando región de memoria ejecutable");
             return error.FailedMprotect;
         }
     }
+
+    fn write_asm(self: *x86_assembler, comptime fmt: []const u8, args: anytype) void {
+        std.fmt.format(self.text.writer(), fmt, args) catch |err| switch (err) {
+            else => logger.err("Error escribiendo texto : {s}", .{@errorName(err)}),
+        };
+    }
 };
 
 test "assembler test" {
-    var jit = try x86_assembler.init(std.testing.allocator);
+    var jit = try x86_assembler.init(std.testing.allocator, std.ArrayList(u8).init(std.testing_allocator));
     defer jit.deinit();
 
     jit.prologue();
@@ -243,7 +286,10 @@ pub const x86_jit = struct {
     symbols_cursor: usize = 0,
 
     pub fn init(alloc: std.mem.Allocator, program: assembler.assembler_result) !x86_jit {
-        return .{ .ass = try x86_assembler.init(alloc), .program = program };
+        return .{
+            .ass = try x86_assembler.init(alloc),
+            .program = program,
+        };
     }
 
     pub fn deinit(self: *x86_jit) void {
@@ -269,6 +315,8 @@ pub const x86_jit = struct {
                 const decoded = decode_instruction(ins.data);
                 self.record_symbol_pos();
 
+                self.write_asm("; inicio de {s}\n", .{ins.original_text});
+
                 if (ins.is_breakpoint and decoded.op == .BEQ) {
                     // we do not execute BEQ when it is a breakpoint bc it could easily cause infinite loops
                     // example: *end: BEQ end
@@ -277,6 +325,7 @@ pub const x86_jit = struct {
                 }
 
                 if (ins.is_data) {
+                    self.write_asm("dw : 0x{x}\n", .{ins.data});
                     self.compile_data(ins.data);
                 } else {
                     switch (decoded.op) {
@@ -303,11 +352,11 @@ pub const x86_jit = struct {
             }
             self.ass.epilogue();
             if (i == 0) { // ahora que ya sabemos las posiciones de todo se vuelve a empezar
+                self.ass.text.clearRetainingCapacity();
                 self.ass.cursor = 0; // TODO: usar dos funciones en vez de este bucle guarro
             }
         }
     }
-
     fn compile_data(self: *x86_jit, data: u16) void {
         self.ass.emit16(data);
     }
@@ -363,6 +412,12 @@ pub const x86_jit = struct {
         try self.ass.run();
     }
 
+    fn write_asm(self: *x86_jit, comptime fmt: []const u8, args: anytype) void {
+        std.fmt.format(self.ass.text.writer(), fmt, args) catch |err| switch (err) {
+            else => logger.err("Error escribiendo texto : {s}", .{@errorName(err)}),
+        };
+    }
+
     // given an index for a variable in MS returns its value in the current jitted code
     // only really makes sense for data, as instructions will be different (and have different lengths) than their MS counterparts
     pub fn get_data_value(self: *x86_jit, index: u7) u16 {
@@ -374,7 +429,7 @@ pub const x86_jit = struct {
         for (self.program.instructions.items) |i| {
             if (i.name) |name| {
                 if (i.is_data) {
-                    std.debug.print("La variable {s} tiene valor {x}\n", .{ name, self.get_data_value(i.index) });
+                    std.debug.print("La variable {s} tiene valor 0x{x}\n", .{ name, self.get_data_value(i.index) });
                 }
             }
         }
