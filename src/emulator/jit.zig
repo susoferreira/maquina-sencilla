@@ -237,14 +237,34 @@ const x86_assembler = struct {
     }
 
     fn setRwx(slice: []align(std.mem.page_size) u8) !void {
-        const value = std.os.linux.mprotect(
-            slice.ptr,
-            slice.len,
-            std.os.linux.PROT.EXEC | std.os.linux.PROT.WRITE | std.os.linux.PROT.READ,
-        );
-        if (value == -1) {
-            logger.err("Error creando región de memoria ejecutable");
-            return error.FailedMprotect;
+        switch (builtin.os.tag) {
+            .linux => {
+                const value = std.os.linux.mprotect(
+                    slice.ptr,
+                    slice.len,
+                    std.os.linux.PROT.EXEC | std.os.linux.PROT.WRITE | std.os.linux.PROT.READ,
+                );
+                if (value == -1) {
+                    logger.err("Error creando región de memoria ejecutable");
+                    return error.FailedMprotect;
+                }
+            },
+            .windows => {
+                var old_prot: u32 = undefined;
+                std.os.windows.VirtualProtect(
+                    slice.ptr,
+                    slice.len,
+                    std.os.windows.PAGE_EXECUTE_READWRITE,
+                    &old_prot,
+                ) catch |err| switch (err) {
+                    else => {
+                        logger.err("Error Haciendo memoria ejecutable: {s}", .{@errorName(err)});
+                    },
+                };
+            },
+            else => {
+                logger.err("Memory protection change unsupported on {s}", .{@tagName(builtin.os.tag)});
+            },
         }
     }
 
