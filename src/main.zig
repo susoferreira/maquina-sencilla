@@ -12,9 +12,25 @@ const MS_OPCODE = @import("emulator/components.zig").MS_OPCODE;
 const UC_STATES = @import("emulator/components.zig").UC.UC_STATES;
 const ALU_OPCODE = @import("emulator/components.zig").ALU_OPCODE;
 const flowcharts = @import("emulator/flowcharts.zig");
+const jit = @import("emulator/jit.zig").x86_jit;
 
 const ini_file = @embedFile("./imgui.ini");
 const example = @embedFile("./example.txt");
+
+pub const is_native = switch (builtin.os.tag) {
+    .windows, .linux => true,
+    .freestanding => false,
+    else => {
+        @compileError("platform not supported");
+    },
+};
+
+pub const is_x64 = switch (builtin.cpu.arch) {
+    .x86_64 => true,
+    else => false,
+};
+
+const nfd = if (is_native) @import("nfd");
 
 pub fn logFn(
     comptime message_level: std.log.Level,
@@ -42,15 +58,6 @@ const log = struct {
     scope: []const u8, //we need to save it as text bc else it would be comptime
     text: []const u8,
 };
-
-pub const is_native = switch (builtin.os.tag) {
-    .windows, .linux => true,
-    .freestanding => false,
-    else => {
-        @compileError("platform not supported");
-    },
-};
-const nfd = if (is_native) @import("nfd");
 
 const State = struct {
     pass_action: c.sg_pass_action,
@@ -82,6 +89,9 @@ var assembled: assembler.assembler_result = undefined; //we give it value on ini
 var log_arena: std.heap.ArenaAllocator = undefined;
 var logs: std.ArrayList(log) = undefined;
 var need_load_ini = true;
+var should_show_jit = false;
+var jit_compiler: jit = undefined;
+
 pub fn inspector_for_u16(name: []const u8, memory: *u16) void {
     c.igTableNextRow(0, 0);
 
@@ -202,6 +212,24 @@ pub fn inspector_labels() void {
         c.igEndTable();
     }
     c.igEnd();
+}
+
+pub fn inspector_labels_jit() void {
+    const table_size = c.struct_ImVec2{ .x = 0, .y = 0 };
+    if (c.igBeginTable("jit_results", 2, c.ImGuiTableFlags_None, table_size, 0)) {
+        c.igTableSetupColumn("Etiqueta", 0, 0, 0);
+        c.igTableSetupColumn("Valor (hex)", 0, 0, 0);
+        c.igTableHeadersRow();
+
+        for (jit_compiler.program.instructions.items) |ins| {
+            if (ins.name) |name| {
+                if (ins.is_data) {
+                    const_int_inspector(name, jit_compiler.get_data_value(ins.index));
+                }
+            }
+        }
+        c.igEndTable();
+    }
 }
 
 pub fn struct_inspector(comptime T: type, instance: T) void {
@@ -484,6 +512,9 @@ fn shortcuts() void {
     if (c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_R, 0, 0)) {
         reset_machine();
     }
+    if (is_x64 and c.igShortcut(c.ImGuiMod_Ctrl | c.ImGuiKey_J, 0, 0)) {
+        run_jit();
+    }
 }
 
 fn create_flowchart() void {
@@ -515,6 +546,37 @@ fn create_flowchart() void {
             defer alloc.free(flowchart_sentinel);
             c.create_flowchart_popup(flowchart_sentinel);
         }
+    }
+}
+
+fn run_jit() void {
+    ensamblar();
+    jit_compiler = jit.init(alloc, assembled) catch return;
+    jit_compiler.jit();
+    jit_compiler.run() catch return;
+    should_show_jit = true;
+}
+
+fn show_jit_results() void {
+    if (should_show_jit) {
+        const text = std.mem.concatWithSentinel(alloc, u8, &[_][]const u8{jit_compiler.ass.text.items}, 0) catch unreachable;
+
+        c.igSetNextWindowPos(.{ .x = @as(f32, @floatFromInt(c.sapp_width())) / 2, .y = 0 }, c.ImGuiCond_Appearing, .{ .x = 1.0, .y = 0.0 });
+        if (c.igBegin("Resultados JIT", &should_show_jit, c.ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (c.igSmallButton("Guardar Binario")) {
+                fs_wrapper.save_file_as(alloc, "JIT.bin", jit_compiler.ass.code[0..jit_compiler.ass.cursor]);
+            }
+            inspector_labels_jit();
+
+            c.igSeparator();
+            c.igText("Assembly generado de x86_64:");
+            c.igSameLine(0, 10);
+            if (c.igButton("Guardar asm", .{ .x = 0, .y = 0 })) {
+                fs_wrapper.save_file_as(alloc, "jit_assembly.asm", text);
+            }
+            c.igText(text);
+        }
+        c.igEnd();
     }
 }
 
@@ -559,7 +621,15 @@ fn editor_window() void {
             }
             c.igEndMenu();
         }
-        c.igEndMenuBar();
+        if (is_x64) {
+            if (c.igBeginMenu("JIT", true)) {
+                if (c.igMenuItem_Bool("Run as JIT", "CTRL+J", false, true)) {
+                    run_jit();
+                }
+                c.igEndMenu();
+            }
+            c.igEndMenuBar();
+        }
     }
 }
 
@@ -586,6 +656,7 @@ export fn update() void {
     c.draw_hex_editor(&maquina.system_memory.memory, maquina.system_memory.memory.len);
 
     draw_log_viewer();
+    show_jit_results();
 
     if (need_load_ini) {
         need_load_ini = false;
