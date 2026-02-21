@@ -11,7 +11,7 @@
     .dependencies = .{
         // the name of the package
         .nfd = .{
-            .url = "https://github.com/CoolPuppyKid/nfd-zig/archive/refs/heads/main.tar.gz",
+            .url = "git+https://github.com/CoolPuppyKid/nfd-zig/#802143be8c29fc35ffda80a13c1ad1b21eb56656",
             .hash = "1220d74fea7760ef9509c3cde032a301d63e9268fffe0260b216895102c7c1b2601a",
         },
     },
