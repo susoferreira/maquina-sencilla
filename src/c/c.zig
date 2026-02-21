@@ -1,12 +1,14 @@
 const builtin = @import("builtin");
 
-pub const is_native = switch(builtin.os.tag){
-    .windows,.linux =>true,
+pub const is_native = switch (builtin.os.tag) {
+    .windows, .linux => true,
     .freestanding => false,
-    else => {@compileError("platform not supported");}
+    else => {
+        @compileError("platform not supported");
+    },
 };
 
-pub usingnamespace @cImport({
+pub const c = @cImport({
     @cDefine("SOKOL_GLCORE33", "");
     @cInclude("sokol/sokol_app.h");
     @cInclude("sokol/sokol_gfx.h");
@@ -20,7 +22,7 @@ pub usingnamespace @cImport({
     @cInclude("cimgui/cimgui.h");
     @cInclude("hex_editor/hex_editor_wrappers.h");
     @cInclude("ColorTextEdit/TextEditorWrappers.h");
-    if(!is_native){
+    if (!is_native) {
         @cInclude("./c/web-build.h");
     }
 });

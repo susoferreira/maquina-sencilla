@@ -2,7 +2,8 @@
 // comments are really done in the same way using 2 forward slashes
 .{
     // the name of your project
-    .name = "maquina-sencilla",
+    .name = .maquina_sencilla,
+    .fingerprint = 0x307ae44420305ba1,
     // the version of your project
     .version = "1.8.0",
 
@@ -11,7 +12,7 @@
         // the name of the package
         .nfd = .{
             .url = "https://github.com/CoolPuppyKid/nfd-zig/archive/refs/heads/main.tar.gz",
-            .hash = "12205af00e662ac12ee5f725c8f18d784ef2574bc750eea6143157ca10cfc34d8546",
+            .hash = "1220d74fea7760ef9509c3cde032a301d63e9268fffe0260b216895102c7c1b2601a",
         },
     },
     .paths = .{"."},

@@ -36,17 +36,17 @@ const MODRM_reg_reg: u8 = 0xc0;
 const MODRM_RSI_PLUS_DISP32: u8 = 0b10000110; //10 + ... + 100, the middle bits are for the register used
 
 const x86_assembler = struct {
-    code: []align(std.mem.page_size) u8,
+    code: []align(std.heap.pageSize()) u8,
     alloc: std.mem.Allocator,
     cursor: u16 = 0,
     text: std.ArrayList(u8),
 
     pub fn init(alloc: std.mem.Allocator) !x86_assembler {
-        const code: []align(std.mem.page_size) u8 = try alloc.alignedAlloc(u8, std.mem.page_size, std.mem.page_size);
+        const code: []align(std.heap.pageSize()) u8 = try alloc.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(std.heap.pageSize()), std.heap.pageSize());
         return .{
             .code = code,
             .alloc = alloc,
-            .text = std.ArrayList(u8).init(alloc),
+            .text = .empty,
         };
     }
 
@@ -108,7 +108,7 @@ const x86_assembler = struct {
     // https://www.felixcloutier.com
     // https://software.intel.com/en-us/download/intel-64-and-ia-32-architectures-sdm-combined-volumes-1-2a-2b-2c-2d-3a-3b-3c-3d-and-4 pagina 594
 
-    // B8+ rw iw 	MOV r16, imm16
+    // B8+ rw iw  MOV r16, imm16
     fn mov_reg_imm16(self: *x86_assembler, r1: register, immediate: u16) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0xB8 | @as(u8, @intFromEnum(r1)));
@@ -116,7 +116,7 @@ const x86_assembler = struct {
         self.write_asm("MOV {s}, 0x{x}\n", .{ @tagName(r1), immediate });
     }
 
-    //REX.W + B8+ rd io 	MOV r64, imm64
+    //REX.W + B8+ rd io  MOV r64, imm64
     fn mov_reg_imm64(self: *x86_assembler, r1: register, immediate: u64) void {
         self.emit8(REX64);
         self.emit8(0xB8 | @as(u8, @intFromEnum(r1)));
@@ -125,7 +125,7 @@ const x86_assembler = struct {
         self.write_asm("MOV R{s}, 0x{x}\n", .{ @tagName(r1), immediate });
     }
 
-    // 01 /r 	ADD r/m16, r16
+    // 01 /r  ADD r/m16, r16
     fn add_reg_reg(self: *x86_assembler, r1: register, r2: register) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x01);
@@ -134,7 +134,7 @@ const x86_assembler = struct {
         self.write_asm("MOV {s}, {s}\n", .{ @tagName(r1), @tagName(r2) });
     }
 
-    // 8B /r 	MOV r16, r/m16
+    // 8B /r  MOV r16, r/m16
     fn mov_reg_reg(self: *x86_assembler, r1: register, r2: register) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x8b);
@@ -143,7 +143,7 @@ const x86_assembler = struct {
         self.write_asm("MOV {s}, {s}\n", .{ @tagName(r1), @tagName(r2) });
     }
 
-    // 89 /r 	MOV r/m16, r16
+    // 89 /r  MOV r/m16, r16
     fn mov_si_plus_m32_reg(self: *x86_assembler, disp: u32, reg: register) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x89);
@@ -153,7 +153,7 @@ const x86_assembler = struct {
         self.write_asm("MOV [RSI + 0x{x}], {s}\n", .{ disp, @tagName(reg) });
     }
 
-    // 8B /r 	MOV r16, r/m16
+    // 8B /r  MOV r16, r/m16
     fn mov_reg_si_plus_m32(self: *x86_assembler, reg: register, disp: u32) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x8B);
@@ -164,7 +164,7 @@ const x86_assembler = struct {
         self.write_asm("MOV {s}, [RSI + 0x{x}]\n", .{ @tagName(reg), disp });
     }
 
-    // 39 /r 	CMP r/m16, r16
+    // 39 /r  CMP r/m16, r16
     fn cmp_reg_reg(self: *x86_assembler, r1: register, r2: register) void {
         self.emit8(ADDRESS_SIZE_OVERRIDE);
         self.emit8(0x39);
@@ -173,7 +173,7 @@ const x86_assembler = struct {
         self.write_asm("CMP {s}, {s}\n", .{ @tagName(r1), @tagName(r1) });
     }
 
-    //74 cb 	JE rel8 Jump short if equal (ZF=1).
+    //74 cb  JE rel8 Jump short if equal (ZF=1).
     fn jump_equal_rel8(self: *x86_assembler, position: i8) void {
         self.emit8(0x74);
         self.emit8_signed(position);
@@ -183,7 +183,7 @@ const x86_assembler = struct {
 
     //rel16 not supported on 64 bits
 
-    //0F 84 cd 	JZ rel32 Jump near if 0 (ZF=1).
+    //0F 84 cd  JZ rel32 Jump near if 0 (ZF=1).
     fn jump_equal_rel32(self: *x86_assembler, position: i32) void {
         self.emit8(0x0F);
         self.emit8(0x84);
@@ -201,7 +201,7 @@ const x86_assembler = struct {
         self.emit32(@bitCast(@as(i32, op2)));
     }
 
-    // 50+rd 	PUSH r64 	O 	Valid 	N.E. 	Push r64.
+    // 50+rd  PUSH r64  O  Valid  N.E.  Push r64.
     fn push_64(self: *x86_assembler, r: register) void {
         self.emit8(0x50 | @as(u8, @intFromEnum(r)));
 
@@ -236,7 +236,7 @@ const x86_assembler = struct {
         @as(*const fn () void, @ptrCast(self.code))();
     }
 
-    fn setRwx(slice: []align(std.mem.page_size) u8) !void {
+    fn setRwx(slice: []align(std.heap.pageSize()) u8) !void {
         switch (builtin.os.tag) {
             .linux => {
                 const value = std.os.linux.mprotect(
@@ -269,7 +269,7 @@ const x86_assembler = struct {
     }
 
     fn write_asm(self: *x86_assembler, comptime fmt: []const u8, args: anytype) void {
-        std.fmt.format(self.text.writer(), fmt, args) catch |err| switch (err) {
+        std.fmt.format(self.text.writer(self.alloc), fmt, args) catch |err| switch (err) {
             else => logger.err("Error escribiendo texto : {s}", .{@errorName(err)}),
         };
     }
@@ -433,7 +433,7 @@ pub const x86_jit = struct {
     }
 
     fn write_asm(self: *x86_jit, comptime fmt: []const u8, args: anytype) void {
-        std.fmt.format(self.ass.text.writer(), fmt, args) catch |err| switch (err) {
+        std.fmt.format(self.ass.text.writer(self.ass.alloc), fmt, args) catch |err| switch (err) {
             else => logger.err("Error escribiendo texto : {s}", .{@errorName(err)}),
         };
     }

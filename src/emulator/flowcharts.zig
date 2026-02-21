@@ -8,7 +8,7 @@ const MS_OPCODE = @import("./components.zig").MS_OPCODE;
 const logger = std.log.scoped(.flowcharts);
 
 fn getCMPText(alloc: std.mem.Allocator, ins: assembler.instruction) ![]const u8 {
-    var words = std.mem.tokenize(u8, ins.original_text, " ");
+    var words = std.mem.tokenizeScalar(u8, ins.original_text, ' ');
     std.debug.assert(std.mem.eql(u8, words.next().?, "CMP") or std.mem.eql(u8, words.next().?, "CMP") or std.mem.eql(u8, words.next().?, "CMP"));
 
     return try std.fmt.allocPrint(alloc, "{s} = {s}", .{ words.next().?, words.next().? });
@@ -16,7 +16,7 @@ fn getCMPText(alloc: std.mem.Allocator, ins: assembler.instruction) ![]const u8 
 
 pub fn buildFlowchart(arena: *std.heap.ArenaAllocator, assembly: assembler.assembler_result) ![]const u8 {
     const alloc = arena.allocator();
-    var result = std.ArrayList(u8).init(alloc);
+    var result: std.ArrayList(u8) = .empty;
     var i: u7 = 0;
     const instructions: []assembler.instruction = assembly.instructions.items;
 
@@ -27,7 +27,7 @@ pub fn buildFlowchart(arena: *std.heap.ArenaAllocator, assembly: assembler.assem
         }
         if (instructions[i].is_breakpoint) {
             logger.info("breakpoint encontrado: {s}", .{instructions[i].original_text});
-            try result.appendSlice(try std.fmt.allocPrint(alloc, "{}[{s}] --> -1[FIN]\n", .{ i, instructions[i].original_text }));
+            try result.appendSlice(alloc, try std.fmt.allocPrint(alloc, "{}[{s}] --> -1[FIN]\n", .{ i, instructions[i].original_text }));
             continue;
         }
 
@@ -98,7 +98,7 @@ pub fn buildFlowchart(arena: *std.heap.ArenaAllocator, assembly: assembler.assem
             .BEQ => unreachable,
         }
         logger.debug("Texto insertado: {s}", .{text});
-        try result.appendSlice(text);
+        try result.appendSlice(alloc, text);
     }
 
     return std.fmt.allocPrint(alloc, template, .{result.items}); // we dont need to worry about deallocation because of the arena

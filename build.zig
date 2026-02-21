@@ -1,6 +1,6 @@
 const std = @import("std");
 const CrossTarget = @import("std").zig.CrossTarget;
-const Mode = std.builtin.Mode;
+const Mode = std.builtin.OptimizeMode;
 const LibExeObjStep = std.build.LibExeObjStep;
 
 pub const Config = struct { backend: Backend = .auto, force_egl: bool = false, enable_x11: bool = true, enable_wayland: bool = false };
@@ -13,7 +13,7 @@ pub const Backend = enum {
     gles3,
     wgpu,
 };
-pub fn web_build(b: *std.Build, config: Config, optimize: std.builtin.Mode, target: std.Build.ResolvedTarget) !void {
+pub fn web_build(b: *std.Build, config: Config, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) !void {
     if (b.sysroot == null) {
         std.log.err("Please build with 'zig build -Dtarget=wasm32-emscripten --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
         return error.SysRootExpected;
@@ -30,7 +30,7 @@ pub fn web_build(b: *std.Build, config: Config, optimize: std.builtin.Mode, targ
     const include_path = try std.fs.path.join(b.allocator, &.{ b.sysroot.?, "include" });
     defer b.allocator.free(include_path);
 
-    libsokol.defineCMacro("__EMSCRIPTEN__", "1");
+    libsokol.root_module.addCMacro("__EMSCRIPTEN__", "1");
     libsokol.addIncludePath(b.path(include_path));
 
     const cpp_args = [_][]const u8{ "-Wno-deprecated-declarations", "-Wno-return-type-c-linkage", "-fno-exceptions", "-fno-threadsafe-statics" };
@@ -43,8 +43,18 @@ pub fn web_build(b: *std.Build, config: Config, optimize: std.builtin.Mode, targ
     b.installArtifact(libsokol);
 }
 
-pub fn lib_sokol_cimgui(b: *std.Build, config: Config, optimize: std.builtin.Mode, target: std.Build.ResolvedTarget) !*std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{ .name = "sokol", .target = target, .optimize = optimize, .link_libc = true });
+pub fn lib_sokol_cimgui(b: *std.Build, config: Config, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) !*std.Build.Step.Compile {
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "sokol",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+        .use_llvm = true,
+    });
+
     lib.linkLibC();
     lib.setVerboseLink(true);
     lib.addIncludePath(b.path("src/"));
@@ -115,19 +125,19 @@ pub fn lib_sokol_cimgui(b: *std.Build, config: Config, optimize: std.builtin.Mod
     return lib;
 }
 
-pub fn native_build(b: *std.Build, config: Config, optimize: std.builtin.Mode, target: std.Build.ResolvedTarget) !void {
+pub fn native_build(b: *std.Build, config: Config, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) !void {
     const options = b.addOptions();
     options.addOption(bool, "use_nfd", false);
 
     const exe = b.addExecutable(.{
         .name = "Maquina sencilla",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .use_llvm = true,
     });
-    if (target.query.os_tag == .windows) {
-        exe.want_lto = false;
-    }
     exe.linkLibC();
     exe.linkLibCpp(); //imgui needs libcpp
     exe.addIncludePath(b.path("src/"));

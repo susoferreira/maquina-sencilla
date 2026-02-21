@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const options = @import("build_options");
-const c = @import("c/c.zig");
+const c = @import("c/c.zig").c;
 
 const fs_wrapper = @import("./emulator/file_saver.zig");
 const assembler = @import("./emulator/assembler.zig");
@@ -40,7 +40,7 @@ pub fn logFn(
 ) void {
     const text = std.fmt.allocPrint(log_arena.allocator(), format, args) catch unreachable;
 
-    logs.append(.{
+    logs.append(log_arena.allocator(), .{
         .message_level = message_level,
         .scope = @tagName(scope),
         .text = text,
@@ -51,7 +51,7 @@ pub fn logFn(
     }
 }
 pub const log_level: std.log.Level = .info;
-pub const std_options = .{ .logFn = logFn };
+pub const std_options = std.Options{ .logFn = logFn };
 
 const log = struct {
     message_level: std.log.Level,
@@ -161,7 +161,7 @@ pub fn inspector_for_enum(
     comptime T: type,
     memory: *T,
 ) void {
-    if (@typeInfo(T) != .Enum) {
+    if (@typeInfo(T) != .@"enum") {
         @compileError("inspector_for_enum solo puede recibir T = enum y memory = *enum");
     }
 
@@ -176,7 +176,7 @@ pub fn inspector_for_enum(
     c.igText(sentinel_name);
     _ = c.igTableNextColumn();
     if (c.igBeginCombo(label, @tagName(memory.*), 0)) {
-        inline for (@typeInfo(T).Enum.fields) |field| {
+        inline for (@typeInfo(T).@"enum".fields) |field| {
             const field_name = std.mem.concatWithSentinel(alloc, u8, &[_][]const u8{field.name}, 0) catch unreachable;
             const selected = @intFromEnum(memory.*) == field.value;
             if (c.igSelectable_Bool(field_name, selected, 0, c.ImVec2{ .x = 200, .y = 0 })) {
@@ -246,9 +246,9 @@ pub fn struct_inspector(comptime T: type, instance: T) void {
         c.igTableSetupColumn("Valor", 0, 0, 0);
         c.igTableHeadersRow();
 
-        inline for (@typeInfo(T).Struct.fields) |field| {
+        inline for (@typeInfo(T).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
-                .Pointer => {
+                .pointer => {
                     switch (field.type) {
                         *u16 => {
                             inspector_for_u16(field.name, @field(instance, field.name));
@@ -260,11 +260,11 @@ pub fn struct_inspector(comptime T: type, instance: T) void {
                             inspector_for_bool(field.name, @field(instance, field.name));
                         },
                         else => {
-                            switch (@typeInfo(@typeInfo(field.type).Pointer.child)) {
-                                .Enum => {
+                            switch (@typeInfo(@typeInfo(field.type).pointer.child)) {
+                                .@"enum" => {
                                     inspector_for_enum(
                                         field.name,
-                                        @typeInfo(field.type).Pointer.child,
+                                        @typeInfo(field.type).pointer.child,
                                         @field(instance, field.name),
                                     );
                                 },
@@ -276,7 +276,7 @@ pub fn struct_inspector(comptime T: type, instance: T) void {
                     }
                 },
 
-                .Int => {
+                .int => {
                     const_int_inspector(field.name, @field(instance, field.name));
                 },
 
@@ -322,7 +322,6 @@ export fn init() void {
     };
 
     log_arena = std.heap.ArenaAllocator.init(alloc);
-    logs = std.ArrayList(log).init(log_arena.allocator());
 
     var desc = std.mem.zeroes(c.sg_desc);
     desc.context = c.sapp_sgcontext();
@@ -704,10 +703,10 @@ pub fn draw_log_viewer() void {
     c.igGetContentRegionMax(&window_size);
 
     if (c.igButton("Borrar Logs", .{ .x = window_size.x, .y = 50 })) {
-        logs.deinit();
+        logs.deinit(log_arena.allocator());
         log_arena.deinit();
         log_arena = std.heap.ArenaAllocator.init(alloc);
-        logs = std.ArrayList(log).init(log_arena.allocator());
+        logs = .empty;
     }
 
     const log_slice: []log = logs.items; //autocompletado de mierda

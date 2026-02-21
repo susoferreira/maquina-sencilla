@@ -15,7 +15,7 @@ Los diagramas se generan analizando las instrucciones y usando mermaid. El resul
 - El inspector de variables internas de la máquina permite modificar su estado, aunque modificar algunas de estas variables (como ```ALU_ENABLE_A``` la mayoría del tiempo no afectará a la ejecución, porque son inmediatamente sobreescritas según el estado de  ```UC_INTERNAL_STATE```)
 
 ## Compilar
-1. Descargar [Zig](https://ziglang.org/)
+1. Descargar [Zig](https://ziglang.org/) **VERSION 0.15.2**
 2. ```zig build run```
 3. Mirar la documentación de zig si quieres compilar a otros targets
 > Nota: Es importante clonar el repositorio con submodulos incluídos: ```git clone --recurse-submodules https://github.com/susoferreira/maquina-sencilla```

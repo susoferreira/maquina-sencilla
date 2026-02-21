@@ -40,10 +40,10 @@ pub const assembler_result = struct {
     program: [128]u16,
 
     pub fn deinit(self: *assembler_result) void {
-        self.instructions.deinit();
+        self.instructions.deinit(self.allocator);
         self.labels.deinit();
-        self.breakpoint_indexes.deinit();
-        self.breakpoint_lines.deinit();
+        self.breakpoint_indexes.deinit(self.allocator);
+        self.breakpoint_lines.deinit(self.allocator);
     }
 };
 
@@ -59,13 +59,13 @@ fn check_label(line: []const u8) struct { name_index: u32, is_label: bool, is_br
 }
 
 fn build_breakpoints(allocator: std.mem.Allocator, instructions: []instruction) !struct { indexes: std.ArrayList(u7), lines: std.ArrayList(c_int) } {
-    var breakpoint_indexes = std.ArrayList(u7).init(allocator);
-    var breakpoint_lines = std.ArrayList(c_int).init(allocator);
+    var breakpoint_indexes: std.ArrayList(u7) = .empty;
+    var breakpoint_lines: std.ArrayList(c_int) = .empty;
 
     for (instructions) |ins| {
         if (ins.is_breakpoint) {
-            try breakpoint_indexes.append(ins.index);
-            try breakpoint_lines.append(@intCast(ins.original_line));
+            try breakpoint_indexes.append(allocator, ins.index);
+            try breakpoint_lines.append(allocator, @intCast(ins.original_line));
         }
     }
 
@@ -90,13 +90,13 @@ fn build_program(allocator: std.mem.Allocator, instructions: []instruction) ![12
 
 pub fn assemble_program(program: []const u8, allocator: std.mem.Allocator) !assembler_result {
     var instructions = try std.ArrayList(instruction).initCapacity(allocator, 128); //its important to init with 128 so we dont reallocate memory
-    errdefer instructions.deinit();
+    errdefer instructions.deinit(allocator);
 
     var labels = std.StringHashMap(*instruction).init(allocator);
     errdefer labels.deinit();
     var lines = std.mem.splitScalar(u8, program, '\n');
 
-    try first_pass(&lines, &instructions, &labels);
+    try first_pass(allocator, &lines, &instructions, &labels);
     try second_pass(instructions.items, labels);
 
     var breakpoint_info = try build_breakpoints(allocator, instructions.items);
@@ -115,7 +115,7 @@ pub fn assemble_program(program: []const u8, allocator: std.mem.Allocator) !asse
     };
 }
 
-fn first_pass(lines: *std.mem.SplitIterator(u8, .scalar), instructions: *std.ArrayList(instruction), labels: *std.StringHashMap(*instruction)) !void {
+fn first_pass(alloc: std.mem.Allocator, lines: *std.mem.SplitIterator(u8, .scalar), instructions: *std.ArrayList(instruction), labels: *std.StringHashMap(*instruction)) !void {
     var line_number: usize = 1;
     var index: usize = 0;
 
@@ -124,7 +124,7 @@ fn first_pass(lines: *std.mem.SplitIterator(u8, .scalar), instructions: *std.Arr
             logger.err("El programa excede la memoria de la maquina {} > 128", .{index + 1});
             return error.ProgramTooBig;
         }
-        var words = std.mem.tokenize(u8, line, " ");
+        var words = std.mem.tokenizeScalar(u8, line, ' ');
 
         const first_word = words.peek() orelse continue; //on empty line continue
 
@@ -162,7 +162,7 @@ fn first_pass(lines: *std.mem.SplitIterator(u8, .scalar), instructions: *std.Arr
             .original_line = line_number,
             .is_breakpoint = label_info.is_breakpoint,
         };
-        try instructions.append(current);
+        try instructions.append(alloc, current);
 
         if (name) |n| {
             try labels.put(n, &instructions.items[instructions.items.len - 1]);
@@ -197,7 +197,7 @@ fn second_pass(instructions: []instruction, labels: std.StringHashMap(*instructi
 }
 
 fn get_opcode(operation: []const u8, line_number: usize) !u2 {
-    inline for (@typeInfo(components.MS_OPCODE).Enum.fields) |tag| {
+    inline for (@typeInfo(components.MS_OPCODE).@"enum".fields) |tag| {
         if (std.mem.eql(u8, operation, tag.name)) {
             return tag.value;
         }
